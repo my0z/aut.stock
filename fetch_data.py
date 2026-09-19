@@ -98,7 +98,11 @@ def fetch_all(start: str, end: str, tickers: list[str], sleep: float = 0.3) -> N
     FLOW_DIR.mkdir(parents=True, exist_ok=True)
     n = len(tickers)
     failed: list[str] = []
+    streak = 0  # 연속 실패. KRX 가 IP 를 차단하면 전부 빈 응답이 오므로 바로 멈춘다
     for i, t in enumerate(tickers, 1):
+        if streak >= 8:
+            print("연속 8 종목 실패. KRX 차단 가능성이 높아 중단한다. 몇 시간 뒤 또는 다른 IP 에서 재실행", file=sys.stderr)
+            break
         p_path = PRICE_DIR / f"{t}.parquet"
         f_path = FLOW_DIR / f"{t}.parquet"
         if p_path.exists() and f_path.exists():
@@ -113,12 +117,15 @@ def fetch_all(start: str, end: str, tickers: list[str], sleep: float = 0.3) -> N
                 fl = fetch_flow(t, start, end)
                 if not fl.empty:
                     fl.to_parquet(f_path)
+                    streak = 0
                 else:
                     failed.append(t)
+                    streak += 1
                 time.sleep(sleep)
         except Exception as e:  # noqa: BLE001
             print(f"[{i}/{n}] {t} 실패: {e}", file=sys.stderr)
             failed.append(t)
+            streak += 1
             continue
         if i % 50 == 0:
             print(f"[{i}/{n}] 진행 중 (실패 {len(failed)})", flush=True)
