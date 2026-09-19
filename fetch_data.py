@@ -61,8 +61,27 @@ def fetch_price(ticker: str, start: str, end: str) -> pd.DataFrame:
     return df[["open", "high", "low", "close", "volume"]]
 
 
+def _relogin() -> None:
+    """KRX 는 같은 계정이 다른 곳에서 로그인하면 기존 세션을 끊는다. 빈 응답이 오면 강제로 다시 로그인한다."""
+    try:
+        from pykrx.website.comm.auth import get_auth_session
+
+        s = get_auth_session()
+        if s is not None and os.environ.get("KRX_ID"):
+            s.refresh(os.environ["KRX_ID"], os.environ["KRX_PW"])
+    except Exception as e:  # noqa: BLE001
+        print(f"재로그인 실패: {e}", file=sys.stderr)
+
+
 def fetch_flow(ticker: str, start: str, end: str) -> pd.DataFrame:
     df = _retry(stock.get_market_trading_value_by_date, start, end, ticker)
+    for _ in range(2):
+        if df is not None and not df.empty:
+            break
+        # pykrx 는 세션이 끊기면 예외 대신 빈 DataFrame 을 돌려준다 -> 재로그인 후 재시도
+        _relogin()
+        time.sleep(2)
+        df = _retry(stock.get_market_trading_value_by_date, start, end, ticker)
     if df is None or df.empty:
         return pd.DataFrame()
     cols = {"기관합계": "inst", "외국인합계": "foreign", "개인": "indiv"}
@@ -78,6 +97,7 @@ def fetch_all(start: str, end: str, tickers: list[str], sleep: float = 0.3) -> N
     PRICE_DIR.mkdir(parents=True, exist_ok=True)
     FLOW_DIR.mkdir(parents=True, exist_ok=True)
     n = len(tickers)
+    failed: list[str] = []
     for i, t in enumerate(tickers, 1):
         p_path = PRICE_DIR / f"{t}.parquet"
         f_path = FLOW_DIR / f"{t}.parquet"
@@ -93,13 +113,20 @@ def fetch_all(start: str, end: str, tickers: list[str], sleep: float = 0.3) -> N
                 fl = fetch_flow(t, start, end)
                 if not fl.empty:
                     fl.to_parquet(f_path)
+                else:
+                    failed.append(t)
                 time.sleep(sleep)
         except Exception as e:  # noqa: BLE001
             print(f"[{i}/{n}] {t} 실패: {e}", file=sys.stderr)
+            failed.append(t)
             continue
         if i % 50 == 0:
-            print(f"[{i}/{n}] 진행 중", flush=True)
-    print("수집 완료")
+            print(f"[{i}/{n}] 진행 중 (실패 {len(failed)})", flush=True)
+    n_price = len(list(PRICE_DIR.glob("*.parquet")))
+    n_flow = len(list(FLOW_DIR.glob("*.parquet")))
+    print(f"수집 완료: 가격 {n_price} / 투자자 {n_flow} 종목. 이번 실행 실패 {len(failed)}")
+    if failed:
+        print("실패 종목은 다시 실행하면 이어서 받는다")
 
 
 def load_panel() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
