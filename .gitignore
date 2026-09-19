@@ -2,3 +2,4 @@ data/*
 !data/panel.parquet
 results/
 __pycache__/
+.venv/
