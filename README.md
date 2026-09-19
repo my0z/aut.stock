@@ -59,6 +59,19 @@ git push
 
 푸시 후 세션에 알려주면 `python backtest.py --cost-bps 24` 를 실행해 두 시나리오 결과를 산출한다.
 
+### KRX 가 IP 를 차단했을 때 (blockError)
+
+투자자 데이터는 키움 REST API 로도 받을 수 있다. 키움 앱키가 있으면 KRX 없이 빠진 종목을 채운다.
+
+```bash
+export KIWOOM_MODE=demo KIWOOM_APPKEY=... KIWOOM_SECRET=...
+python fetch_data_kiwoom.py          # data/flow 가 없는 종목만
+python pack_data.py
+```
+
+KRX 와 키움의 금액 단위가 다를 수 있다. 일봉 백테스트는 부호만 쓰므로 영향이 없고
+유니버스 정렬만 섞인다. 통일하려면 `python fetch_data_kiwoom.py --all` 로 전부 키움 기준으로 받는다.
+
 ---
 
 # 실시간 단타 (키움 REST API + 오라클 VM)

@@ -167,6 +167,32 @@ class KiwoomClient:
             df["value"] = df["trde_prica"].map(_num) * 1e6  # 단위 백만원
         return df
 
+    def investor_daily(self, code: str, since: str, base_dt: str | None = None, max_pages: int = 20) -> pd.DataFrame:
+        """ka10059 종목별 투자자 일별 순매수 금액. since (YYYYMMDD) 까지 거슬러 페이징한다.
+
+        반환 columns: inst foreign indiv (기관계 / 외국인 / 개인) index=date. 단위는 키움 응답 그대로.
+        """
+        body = {"dt": base_dt or datetime.now(KST).strftime("%Y%m%d"), "stk_cd": code,
+                "amt_qty_tp": "1", "trde_tp": "0", "unit_tp": "1"}
+        rows: list[dict] = []
+        for page in self.pages("ka10059", "/api/dostk/stkinfo", body, max_pages):
+            recs = page.get("stk_invsr_orgn") or next((v for v in page.values() if isinstance(v, list)), [])
+            rows.extend(recs)
+            if recs and str(recs[-1].get("dt", ""))[:8] <= since:
+                break
+        if not rows:
+            return pd.DataFrame(columns=["inst", "foreign", "indiv"])
+        df = pd.DataFrame(rows)
+        out = pd.DataFrame({
+            "inst": df["orgn"].map(_signed),
+            "foreign": df["frgnr_invsr"].map(_signed),
+            "indiv": df["ind_invsr"].map(_signed),
+        })
+        out.index = pd.to_datetime(df["dt"].astype(str).str[:8], format="%Y%m%d")
+        out.index.name = "date"
+        out = out[~out.index.duplicated(keep="first")].sort_index()
+        return out[out.index >= pd.Timestamp(since)]
+
     def stock_list(self, market: str) -> pd.DataFrame:
         """ka10099 종목 리스트. market: '0' 코스피 '10' 코스닥."""
         rows: list[dict] = []

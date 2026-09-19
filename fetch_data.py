@@ -41,6 +41,26 @@ def ticker_universe(asof: str, markets: tuple[str, ...] = ("KOSPI", "KOSDAQ")) -
     return sorted(set(tickers))
 
 
+def ticker_universe_cached(client=None) -> list[str]:
+    """KRX 접속 없이 종목 목록을 만든다. data/price 캐시가 있으면 그 목록. 없으면 키움 종목 리스트."""
+    cached = sorted(p.stem for p in PRICE_DIR.glob("*.parquet"))
+    if cached:
+        return cached
+    if client is None:
+        return []
+    codes: list[str] = []
+    for mkt in ("0", "10"):  # 코스피 / 코스닥
+        df = client.stock_list(mkt)
+        if df.empty:
+            continue
+        # 보통주만: 종목코드 끝자리 0 (우선주 5/7 등 제외) 그리고 감리/거래정지 제외
+        ok = df["code"].astype(str).str.len().eq(6) & df["code"].astype(str).str.endswith("0")
+        if "state" in df:
+            ok &= ~df["state"].astype(str).str.contains("정지|관리|정리", regex=True)
+        codes += df.loc[ok, "code"].astype(str).tolist()
+    return sorted(set(codes))
+
+
 def _retry(fn, *args, tries: int = 4, sleep: float = 1.5, **kwargs):
     last = None
     for i in range(tries):
