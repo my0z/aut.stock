@@ -1,0 +1,9 @@
+[Unit]
+Description=Run aut.stock ORB runner every weekday 08:50 KST
+
+[Timer]
+OnCalendar=Mon..Fri 08:50 Asia/Seoul
+Persistent=false
+
+[Install]
+WantedBy=timers.target

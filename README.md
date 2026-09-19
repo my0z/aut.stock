@@ -58,3 +58,45 @@ git push
 ```
 
 푸시 후 세션에 알려주면 `python backtest.py --cost-bps 24` 를 실행해 두 시나리오 결과를 산출한다.
+
+---
+
+# 실시간 단타 (키움 REST API + 오라클 VM)
+
+전략은 **시가 범위 돌파 (ORB)** 다. 자세한 규칙과 근거는 `intraday/strategy.py` 상단 주석에 있다.
+
+| 항목 | 기본값 |
+|---|---|
+| 유니버스 | 전일 기관+외국인 동시 순매수 종목 중 거래대금 상위 30 |
+| 시가 범위 | 09:00~09:30 1분봉 고가/저가 |
+| 진입 | 09:30~14:00 에 종가가 범위 고가 돌파 + 거래량 1.5배 + VWAP 위 |
+| 손절 / 익절 | -2% (또는 범위 저가) / +3% |
+| 시간 청산 | 15:10 |
+| 보유 한도 | 5 종목 균등. 일일 손실 -3% 면 신규 진입 중단 |
+
+## 구성
+
+```
+kiwoom/client.py        토큰 발급 / REST 호출 / 분봉·일봉 / 주문 / 잔고
+kiwoom/stream.py        웹소켓 체결(0B) 스트림. 재접속 포함
+intraday/bars.py        틱 -> 1분봉. data/minute/YYYYMMDD.parquet
+intraday/strategy.py    ORB 엔진 (백테스트와 실전이 같은 코드)
+intraday/universe.py    유니버스 선정 (키움 API / KRX 패널)
+intraday/collect.py     분봉 수집 (history / today / stream)
+intraday/backtest_intraday.py  분봉 백테스트
+intraday/live.py        실시간 러너 (페이퍼 기본. --real 로 실주문)
+deploy/                 오라클 VM systemd 타이머
+```
+
+## 순서
+
+```bash
+export KIWOOM_MODE=demo KIWOOM_APPKEY=... KIWOOM_SECRET=...
+python -m intraday.test_intraday                    # 로직 검증
+python -m intraday.collect history --days 60        # 과거 분봉 수집 (KRX 패널 필요)
+python -m intraday.backtest_intraday --cost-bps 28  # 분봉 백테스트
+python -m intraday.live                             # 장중 페이퍼 트레이딩
+python -m intraday.live --real                      # 모의투자 계좌 실주문 (KIWOOM_MODE=demo)
+```
+
+VM 상시 실행은 `deploy/README.md` 를 본다.
