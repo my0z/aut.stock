@@ -1,0 +1,4 @@
+data/*
+!data/panel.parquet
+results/
+__pycache__/
