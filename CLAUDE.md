@@ -27,5 +27,9 @@
 - 서버: 오라클 VM (ubuntu@relay, ~/aut.stock, venv ~/.venv). 키는 서버 .env 에만 둔다. 채팅에 키를 올리지 않는다
 - 모의투자 페이퍼 모드. `results/overnight_paper.csv` 에 매일 기록. 실주문은 .env OVERNIGHT_ARGS 에 --real
 
+## 데이 단타 연구 (daytrade/ 별도)
+- 시가 매수 -> 당일 종가 매도. 다른 모듈과 코드/데이터를 공유하지 않는다. 전용 스냅샷 `data/daytrade/daily.parquet` (`python -m daytrade.data build` 로 panel 에서 읽기 전용 생성)
+- 결론: 유일한 플러스 신호는 소형주 갭 하락 반등인데 유동성 5억 이상에선 사라지고 슬리피지 50bp 면 소멸. 유동 종목 장중 롱은 전부 마이너스. 자세한 건 `daytrade/README.md`
+
 ## 테스트
-`python test_backtest.py && python -m intraday.test_intraday`
+`python test_backtest.py && python -m intraday.test_intraday && python -m daytrade.test_daytrade`

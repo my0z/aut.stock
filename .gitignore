@@ -8,3 +8,4 @@ logs/
 !data/minute/
 .kakao_token.json
 dashboard/index.html
+!data/daytrade/
