@@ -87,6 +87,17 @@ def access_token() -> str:
     return tok["access_token"]
 
 
+def unlink() -> None:
+    """앱 연결 해제. 동의항목을 다시 받고 싶을 때 쓴다."""
+    tok = _load()
+    if tok:
+        r = requests.post("https://kapi.kakao.com/v1/user/unlink",
+                          headers={"Authorization": f"Bearer {tok['access_token']}"}, timeout=30)
+        print("unlink:", r.status_code, r.text[:100])
+    if TOKEN_FILE.exists():
+        TOKEN_FILE.unlink()
+
+
 def send(text: str, url: str | None = None) -> bool:
     """긴 글은 200자 단위로 나눠 보낸다. 실패해도 예외 대신 False."""
     try:
@@ -122,10 +133,13 @@ def _chunk(text: str) -> list[str]:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
-    if len(sys.argv) < 2 or sys.argv[1] not in ("auth", "send"):
+    if len(sys.argv) < 2 or sys.argv[1] not in ("auth", "send", "unlink"):
         print(__doc__); sys.exit(1)
+    if sys.argv[1] == "unlink":
+        unlink()
+        return
     if sys.argv[1] == "auth":
-        print("1) 아래 주소를 브라우저에서 열고 카카오 로그인 후 '동의' 를 누른다\n")
+        print("1) 아래 주소를 브라우저에서 열고 카카오 로그인 후 '카카오톡 메시지 전송' 체크박스를 켜고 '동의하고 계속하기'\n")
         print(auth_url())
         print(f"\n2) 브라우저가 {REDIRECT_URI}?code=XXXX 로 이동한다 (페이지는 안 열려도 된다)")
         code = input("3) 주소창의 code= 뒤 값을 붙여넣기: ").strip()
