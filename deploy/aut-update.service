@@ -1,0 +1,9 @@
+[Unit]
+Description=aut.stock daily panel update (KRX)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/aut.stock
+ExecStart=/home/ubuntu/aut.stock/deploy/run_update.sh

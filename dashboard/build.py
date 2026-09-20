@@ -108,6 +108,27 @@ def build() -> Path:
         parts.append("<h2>실주문 기록 (최근 60건)</h2>")
         parts.append(_table(live.tail(60).iloc[::-1], {"date": "날짜", "time": "시각", "side": "구분", "name": "종목", "qty": "수량", "price": "가격", "ord_no": "주문번호"}))
 
+    # KRX 확정 데이터와 잠정 선정 비교
+    panel = ROOT / "data" / "panel.parquet"
+    if panel.exists() and not paper.empty:
+        try:
+            pn = pd.read_parquet(panel)
+            dates = pn.index.get_level_values("date")
+            last = dates.max()
+            parts.append(f"<h2>일봉 데이터</h2><p class='muted'>{dates.min().date()} ~ {last.date()} / {dates.nunique()} 거래일 / {pn.index.get_level_values('ticker').nunique()} 종목</p>")
+            day_str = last.strftime("%Y-%m-%d")
+            picks = paper[paper["date"] == day_str]
+            if not picks.empty:
+                import sys
+                sys.path.insert(0, str(ROOT))
+                from overnight.backtest import OvernightParams, candidates
+                C = pn["close"].unstack("ticker").sort_index(); I = pn["inst"].unstack("ticker").reindex(C.index); F = pn["foreign"].unstack("ticker").reindex(C.index)
+                sel = candidates(C, I, F, OvernightParams(top=30, min_chg=0.03)).loc[last]
+                final = set(sel[sel].index); live_set = set(picks["code"])
+                parts.append(f"<p>{day_str} 잠정 선정 {len(live_set)} 종목 중 확정 데이터 기준 후보와 겹침 <b>{len(final & live_set)}</b> 개</p>")
+        except Exception as e:  # noqa: BLE001
+            parts.append(f"<p class='muted'>패널 비교 실패: {html.escape(str(e))}</p>")
+
     # 백테스트 참고
     bt = RESULTS / "overnight" / "daily.csv"
     if bt.exists():

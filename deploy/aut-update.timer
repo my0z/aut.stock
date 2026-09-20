@@ -1,0 +1,9 @@
+[Unit]
+Description=Daily panel update every weekday 16:40 KST
+
+[Timer]
+OnCalendar=Mon..Fri 16:40 Asia/Seoul
+Persistent=true
+
+[Install]
+WantedBy=timers.target

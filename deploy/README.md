@@ -11,6 +11,8 @@ KIWOOM_MODE=demo                       # 모의투자. 실계좌는 real
 KIWOOM_APPKEY=발급받은앱키
 KIWOOM_SECRET=발급받은시크릿
 KAKAO_REST_KEY=카카오앱REST키            # 카톡 알림 (선택)
+KRX_ID=KRX아이디                          # 일봉 자동 갱신 (16:40)
+KRX_PW=KRX비밀번호
 KAKAO_CLIENT_SECRET=클라이언트시크릿코드   # 플랫폼 키 > 클라이언트 시크릿 활성화 시
 OVERNIGHT_ARGS="--top 30 --min-chg 0.03"  # 따옴표 필수. 실주문은 안에 --real 추가
 X
@@ -23,7 +25,7 @@ python -m overnight.live select
 # 매일 자동 실행 (15:21 매수 / 08:35 매도)
 sudo cp deploy/aut-*.service deploy/aut-*.timer /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now aut-buy.timer aut-sell.timer aut-eval.timer
+sudo systemctl enable --now aut-buy.timer aut-sell.timer aut-eval.timer aut-update.timer
 systemctl list-timers 'aut-*'
 ```
 
@@ -77,3 +79,9 @@ sudo netfilter-persistent save 2>/dev/null || sudo apt install -y iptables-persi
 
 도메인: DNS 에 A 레코드 `stock` -> VM 공인 IP 를 추가하고 `nginx-aut.conf` 의 `server_name` 을 맞춘다.
 https: `sudo certbot --nginx -d ab.usb.kr` (certbot 이 없으면 `sudo apt install -y certbot python3-certbot-nginx`).
+
+## 일봉 자동 갱신
+
+`aut-update.timer` 가 평일 16:40 에 `update_daily.py` 를 돌려 그날 확정 시세와 기관·외국인 순매수를 `data/panel.parquet` 에 덧붙인다.
+하루 요청 6번이라 KRX 차단 걱정이 없다. 대시보드에 데이터 기간과 "잠정 선정 vs 확정 후보 겹침" 이 표시된다.
+백테스트를 최신으로 다시 돌리려면 `python -m overnight.backtest` 를 실행한다.
