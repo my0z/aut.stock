@@ -103,7 +103,7 @@ def main() -> None:
         else:
             print(f"{k:>14}: {v}")
     out = Path(a.out)
-    out.mkdir(exist_ok=True)
+    out.mkdir(parents=True, exist_ok=True)
     tr.to_csv(out / "trades_orb.csv", index=False)
     print(f"트레이드 저장: {out}/trades_orb.csv")
 

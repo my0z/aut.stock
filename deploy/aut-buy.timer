@@ -1,0 +1,9 @@
+[Unit]
+Description=Overnight buy every weekday 15:21 KST
+
+[Timer]
+OnCalendar=Mon..Fri 15:21 Asia/Seoul
+Persistent=false
+
+[Install]
+WantedBy=timers.target
