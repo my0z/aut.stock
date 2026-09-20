@@ -107,6 +107,20 @@ sudo systemctl enable --now aut-day-buy.timer aut-day-sell.timer aut-day-eval.ti
 - 권리락/배당락은 키움 등락률과 전일 종가 대비 갭 중 덜 떨어진 쪽을 써서 걸러낸다
 - 페이퍼는 예상체결가를 매수가로 적는다. 실제 시가와 얼마나 다른지가 이 전략의 생사를 정하므로 실주문 로그의 체결가와 비교한다
 
+## 분봉으로 반등 시각 찾기
+
+일봉은 시가와 종가만 있어서 반등이 09:05 에 끝나는지 오후에 오는지 모른다. 후보 종목의 1분봉을 키움 분봉차트 (ka10080) 로
+받아 시간대별 경로를 본다. (날짜 x 종목) 당 요청 1건이라 60일 x 20종목 = 약 20분이면 받는다.
+
+```bash
+python -m daytrade.collect history --days 60   # 과거 후보의 1분봉 -> data/daytrade/minute/YYYYMMDD.parquet
+python -m daytrade.minute_analysis             # 평균 경로 / 매도 시각별 / 매수 지연 / 고점 시각 분포 / 첫 1분
+```
+
+- 매일 15:45 eval 뒤에 `collect today` 가 오늘 매수 종목 분봉을 자동으로 받아 둔다 (`deploy/run_daytrade.sh`)
+- `minute_analysis` 는 시가 매수 후 T 에 팔았을 때와 T1 에 사서 T2 에 팔았을 때의 격자를 낸다. 여기서 15:20 보다 나은 매도 시각이 나오면 `live.py sell` 타이머 시각을 옮긴다
+- 첫 1분 봉의 고가/종가 대비 시가가 시가 매수 슬리피지의 대용치다
+
 ## 구성
 
 ```
@@ -115,6 +129,8 @@ daytrade/backtest.py   후보 선정 -> 일별 수익 -> 요약 -> 민감도 표
 daytrade/scan.py       조건 격자
 daytrade/watchlist.py  다음날 아침 감시 목록 (밴드 통과 종목 + 발동가)
 daytrade/live.py       08:59 선정 / 매수 / 15:20 매도 / 평가 (키움 + 카톡)
+daytrade/collect.py    후보 종목 1분봉 수집 (history / today) -> data/daytrade/minute/
+daytrade/minute_analysis.py  분봉 경로 분석 (반등 시각. 매수/매도 시각 격자)
 daytrade/test_daytrade.py
 deploy/aut-day-*       systemd 타이머. deploy/run_daytrade.sh
 ```
