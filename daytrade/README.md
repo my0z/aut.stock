@@ -79,11 +79,42 @@ python -m daytrade.scan                                 # 320 조합 격자 -> r
 
 옵션: `--gap-max --gap-min --liq-lo --liq-hi --min-price --keep-both-sell --score {gap_down,prev_down,prev_up,liq,flow} --top --cost-bps --slip-bps`
 
+## 실전 러너 (페이퍼 기본)
+
+월요일 아침에 1200 종목을 사람이 볼 수는 없으니 `daytrade/live.py` 가 08:58:30 에 대신 본다.
+
+1. 키움 예상체결등락률 하락 상위 (ka10029) 를 받는다 (전 시장 한 번에)
+2. 감시 목록 (유동성 밴드 통과 종목) 과 교집합
+3. 예상체결가가 전일 종가 대비 -2% 이하인 종목을 갭 큰 순으로 30개 -> 장전 시장가 매수 (시가 체결)
+4. 15:20 시장가 매도 (동시호가 종가 체결). 15:45 종가로 평가해 카톡
+
+```bash
+python -m daytrade.live select          # 08:30~09:00 사이에 뭐가 잡히는지 본다
+python -m daytrade.live buy             # 페이퍼 기록 -> results/daytrade_paper.csv
+python -m daytrade.live buy --real      # 실주문 -> results/daytrade_log.csv
+python -m daytrade.live eval            # 종가 평가 + 카톡
+
+# VM 타이머 (오버나이트 타이머와 별도)
+sudo cp deploy/aut-day-*.service deploy/aut-day-*.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now aut-day-buy.timer aut-day-sell.timer aut-day-eval.timer
+# .env 에 DAYTRADE_ARGS="--top 30" (실주문은 --real 추가)
+```
+
+- 08:58:30 buy / 15:20 sell / 15:45 eval. 오버나이트 (08:35 매도 15:21 매수) 와 시간이 겹치지 않는다
+- 스냅샷은 panel.parquet 가 더 새로우면 buy 직전에 자동으로 다시 만든다 (원본은 읽기만)
+- 키움 ka10029 응답 필드명은 문서 기준으로 짰고 실계정으로 확인하지 못했다. 첫 실행은 `select --dump` 로 원본 첫 행을 보고 `expected_drops` 의 필드명을 맞춘다
+- 권리락/배당락은 키움 등락률과 전일 종가 대비 갭 중 덜 떨어진 쪽을 써서 걸러낸다
+- 페이퍼는 예상체결가를 매수가로 적는다. 실제 시가와 얼마나 다른지가 이 전략의 생사를 정하므로 실주문 로그의 체결가와 비교한다
+
 ## 구성
 
 ```
 daytrade/data.py       스냅샷 생성 / 로드 / 피처 계산
 daytrade/backtest.py   후보 선정 -> 일별 수익 -> 요약 -> 민감도 표
 daytrade/scan.py       조건 격자
+daytrade/watchlist.py  다음날 아침 감시 목록 (밴드 통과 종목 + 발동가)
+daytrade/live.py       08:59 선정 / 매수 / 15:20 매도 / 평가 (키움 + 카톡)
 daytrade/test_daytrade.py
+deploy/aut-day-*       systemd 타이머. deploy/run_daytrade.sh
 ```

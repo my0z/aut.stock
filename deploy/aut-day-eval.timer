@@ -1,0 +1,9 @@
+[Unit]
+Description=Daytrade eval every weekday 15:45 KST
+
+[Timer]
+OnCalendar=Mon..Fri 15:45 Asia/Seoul
+Persistent=false
+
+[Install]
+WantedBy=timers.target

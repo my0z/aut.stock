@@ -1,0 +1,9 @@
+[Unit]
+Description=Daytrade buy every weekday 08:58:30 KST
+
+[Timer]
+OnCalendar=Mon..Fri 08:58:30 Asia/Seoul
+Persistent=false
+
+[Install]
+WantedBy=timers.target
