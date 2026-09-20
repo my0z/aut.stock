@@ -74,5 +74,5 @@ sudo netfilter-persistent save 2>/dev/null || sudo apt install -y iptables-persi
 
 오라클 클라우드 콘솔에서도 열어야 한다: 인스턴스 → 서브넷 → 보안 목록 → 수신 규칙 추가 (소스 0.0.0.0/0 TCP 포트 80).
 
-확인: 브라우저에서 `http://VM공인IP` 가 열리면 도메인 DNS 에 A 레코드 (호스트 예: `stock`) 를 VM 공인 IP 로 추가한다.
-Cloudflare 를 쓰면 프록시 (주황 구름) 를 켜서 https 로 접속할 수 있다.
+도메인: DNS 에 A 레코드 `stock` -> VM 공인 IP 를 추가하고 `nginx-aut.conf` 의 `server_name` 을 맞춘다.
+https: `sudo certbot --nginx -d stock.usb.kr` (certbot 이 없으면 `sudo apt install -y certbot python3-certbot-nginx`).
