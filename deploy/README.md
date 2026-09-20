@@ -53,3 +53,26 @@ python -m notify.kakao auth
 - 매수 직후: 종목 목록과 가격
 - 다음날 08:35: 결과 (평균 수익률 상승/하락 상위 누적)
 - 실행 실패 시: 오류 내용
+
+## 웹 대시보드 (도메인 연결)
+
+매 실행 후 `dashboard/index.html` 이 갱신된다. nginx 로 그대로 서빙한다.
+
+```bash
+sudo apt install -y nginx
+sudo cp deploy/nginx-aut.conf /etc/nginx/sites-available/aut
+sudo ln -sf /etc/nginx/sites-available/aut /etc/nginx/sites-enabled/aut
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo chmod o+x /home/ubuntu                    # nginx 가 홈 아래를 읽을 수 있게
+python -m dashboard.build                      # 첫 페이지 생성
+sudo nginx -t && sudo systemctl restart nginx
+
+# 오라클 VM 은 OS 방화벽이 80 을 막고 있다
+sudo iptables -I INPUT 6 -p tcp --dport 80 -j ACCEPT
+sudo netfilter-persistent save 2>/dev/null || sudo apt install -y iptables-persistent
+```
+
+오라클 클라우드 콘솔에서도 열어야 한다: 인스턴스 → 서브넷 → 보안 목록 → 수신 규칙 추가 (소스 0.0.0.0/0 TCP 포트 80).
+
+확인: 브라우저에서 `http://VM공인IP` 가 열리면 도메인 DNS 에 A 레코드 (호스트 예: `stock`) 를 VM 공인 IP 로 추가한다.
+Cloudflare 를 쓰면 프록시 (주황 구름) 를 켜서 https 로 접속할 수 있다.
