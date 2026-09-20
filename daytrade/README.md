@@ -55,6 +55,11 @@ python -m daytrade.data info
 아침에 사서 저녁에 팔면 -0.4%/일. 전일 -5% 급락 후 동시 순매수 -0.9%/일. 갭 +3% 이상 -0.5~-1%/일.
 갭 -3~-1% 동시 순매수가 -0.05%/일로 가장 덜 나쁜 정도다. 전부 마이너스다.
 
+### 격자 스캔 (320 조합) 요약
+
+갭 상한 4 x 유동성 밴드 4 x 정렬 5 x 상위 2 x 동시순매도 제외 2. 밴드별 평균 샤프: 0~5억 2.6 / 0.1~5억 1.6 / 1~5억 0.1 / 5억 이상 -1.3.
+정렬은 갭 하락 순이 가장 좋고 (1.5) 동시 순매도 제외가 낫다 (1.0 vs 0.5). 5억 이상 밴드는 80 조합 전부 마이너스다.
+
 ## 판단
 
 - 일봉만으로 되는 장중 롱 단타는 없다. 유일한 플러스 신호 (소형주 갭 하락 반등) 는 체결 슬리피지에 잠식된다
@@ -69,7 +74,7 @@ python -m daytrade.test_daytrade                        # 합성 데이터 검�
 python -m daytrade.backtest --sensitivity               # 기본 설정 + 밴드 x 슬리피지 표
 python -m daytrade.backtest --slip-bps 50               # 슬리피지 반영
 python -m daytrade.backtest --liq-lo 5e8 --liq-hi 1e13  # 유동 종목만
-python -m daytrade.scan                                 # 320 조합 격자 -> results/daytrade/scan.csv (약 15분)
+python -m daytrade.scan                                 # 320 조합 격자 -> results/daytrade/scan.csv (약 30분)
 ```
 
 옵션: `--gap-max --gap-min --liq-lo --liq-hi --min-price --keep-both-sell --score {gap_down,prev_down,prev_up,liq,flow} --top --cost-bps --slip-bps`
