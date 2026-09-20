@@ -10,6 +10,7 @@ cat > .env <<'X'
 KIWOOM_MODE=demo                       # 모의투자. 실계좌는 real
 KIWOOM_APPKEY=발급받은앱키
 KIWOOM_SECRET=발급받은시크릿
+KAKAO_REST_KEY=카카오앱REST키            # 카톡 알림 (선택)
 OVERNIGHT_ARGS=--top 30 --min-chg 0.03  # 실주문은 여기에 --real 추가
 X
 chmod 600 .env
@@ -30,3 +31,24 @@ systemctl list-timers 'aut-*'
 - 로그: `logs/overnight_YYYYMMDD.log`
 
 휴장일에는 후보가 비거나 주문이 거부되므로 자연히 건너뛴다. 모의투자로 2주 이상 돌려 백테스트와 차이를 확인한 뒤 실계좌로 옮긴다.
+
+## 카카오톡 알림
+
+1. https://developers.kakao.com → 내 애플리케이션 → 애플리케이션 추가 (이름 아무거나)
+2. 앱 설정 → 플랫폼 → Web 플랫폼 등록: `https://localhost`
+3. 제품 설정 → 카카오 로그인 → 활성화 ON. Redirect URI 에 `https://localhost/kakao` 등록
+4. 카카오 로그인 → 동의항목 → "카카오톡 메시지 전송 (talk_message)" 을 선택 동의로 설정
+5. 앱 키 → **REST API 키** 를 `.env` 의 `KAKAO_REST_KEY` 에 넣는다
+6. 서버에서 인증 (1회)
+
+```bash
+set -a; source .env; set +a
+python -m notify.kakao auth
+```
+
+출력된 주소를 휴대폰 브라우저에서 열어 로그인하고 동의하면 `https://localhost/kakao?code=...` 로 이동한다.
+페이지는 안 열려도 되니 주소창의 `code=` 뒤 값을 복사해 터미널에 붙여넣는다. 카톡으로 "연결 완료" 가 오면 끝.
+
+- 매수 직후: 종목 목록과 가격
+- 다음날 08:35: 결과 (평균 수익률 상승/하락 상위 누적)
+- 실행 실패 시: 오류 내용

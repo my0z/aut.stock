@@ -6,3 +6,4 @@ __pycache__/
 logs/
 .env
 !data/minute/
+.kakao_token.json

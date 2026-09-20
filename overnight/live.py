@@ -22,6 +22,7 @@ import pandas as pd
 
 from kiwoom import KiwoomClient
 from kiwoom.client import KST, _signed
+from notify.kakao import send as kakao
 
 log = logging.getLogger("overnight")
 RESULTS = Path(__file__).resolve().parent.parent / "results"
@@ -100,6 +101,9 @@ def cmd_buy(client: KiwoomClient, a) -> None:
             "net_i": r["net_i"], "net_f": r["net_f"], "ord_no": ord_no,
         })
     log.info("매수 %d 종목 기록", len(picks))
+    head = f"[aut.stock] {now:%m/%d} {'실주문' if a.real else '페이퍼'} 매수 {len(picks)}종목 (종목당 {per/10000:.0f}만원)"
+    body = "\n".join(f"{r['name']} {r['price']:,.0f} {r['chg']*100:+.1f}%" for _, r in picks.iterrows())
+    kakao(head + "\n" + body)
 
 
 def cmd_sell(client: KiwoomClient, a) -> None:
@@ -122,6 +126,7 @@ def cmd_sell(client: KiwoomClient, a) -> None:
                           "name": r.stk_nm, "side": "sell", "qty": qty, "price": r.cur_prc, "chg": "",
                           "net_i": "", "net_f": "", "ord_no": ord_no})
         log.info("매도 주문 %d 종목", len(pos))
+        kakao(f"[aut.stock] {now:%m/%d} 시가 매도 주문 {len(pos)}종목. 결과는 잔고 조회로 확인")
         return
     # 페이퍼: 어제 기록한 후보의 오늘 시가로 평가
     if not PAPER.exists():
@@ -157,6 +162,14 @@ def cmd_sell(client: KiwoomClient, a) -> None:
         daily = allp.groupby("date")["ret"].mean()
         log.info("페이퍼 누적: %d 일 일평균 %+.3f%% 일승률 %.0f%% 누적 %+.1f%%", len(daily), daily.mean() * 100,
                  (daily > 0).mean() * 100, ((1 + daily).prod() - 1) * 100)
+        if not done.empty:
+            best = done.nlargest(3, "ret"); worst = done.nsmallest(3, "ret")
+            msg = (f"[aut.stock] {now:%m/%d} 페이퍼 결과 {len(done)}종목 평균 {done['ret'].mean()*100:+.2f}% "
+                   f"승률 {(done['ret']>0).mean()*100:.0f}%\n"
+                   + "상승: " + " ".join(f"{r['name']} {r['ret']*100:+.1f}%" for _, r in best.iterrows()) + "\n"
+                   + "하락: " + " ".join(f"{r['name']} {r['ret']*100:+.1f}%" for _, r in worst.iterrows()) + "\n"
+                   + f"누적 {len(daily)}일 일평균 {daily.mean()*100:+.2f}% 누적 {((1+daily).prod()-1)*100:+.1f}%")
+            kakao(msg)
 
 
 def cmd_status(client: KiwoomClient, a) -> None:
@@ -180,15 +193,20 @@ def main() -> None:
     ap.add_argument("--cost-bps", type=float, default=18.0)
     ap.add_argument("--mode-env", dest="kmode")
     a = ap.parse_args()
-    client = KiwoomClient(mode=a.kmode)
-    if a.mode == "buy":
-        cmd_buy(client, a)
-    elif a.mode == "sell":
-        cmd_sell(client, a)
-    elif a.mode == "select":
-        print(select(client, a.top, a.min_chg, a.min_price).to_string())
-    else:
-        cmd_status(client, a)
+    try:
+        client = KiwoomClient(mode=a.kmode)
+        if a.mode == "buy":
+            cmd_buy(client, a)
+        elif a.mode == "sell":
+            cmd_sell(client, a)
+        elif a.mode == "select":
+            print(select(client, a.top, a.min_chg, a.min_price).to_string())
+        else:
+            cmd_status(client, a)
+    except Exception as e:  # noqa: BLE001
+        log.exception("실행 실패")
+        kakao(f"[aut.stock] {a.mode} 실패: {type(e).__name__}: {str(e)[:150]}")
+        raise
 
 
 if __name__ == "__main__":
