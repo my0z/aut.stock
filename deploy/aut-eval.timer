@@ -1,0 +1,9 @@
+[Unit]
+Description=Overnight eval every weekday 09:36 KST
+
+[Timer]
+OnCalendar=Mon..Fri 09:36 Asia/Seoul
+Persistent=false
+
+[Install]
+WantedBy=timers.target

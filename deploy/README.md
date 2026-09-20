@@ -21,13 +21,14 @@ set -a; source .env; set +a
 python -m overnight.live select
 
 # 매일 자동 실행 (15:21 매수 / 08:35 매도)
-sudo cp deploy/aut-buy.service deploy/aut-buy.timer deploy/aut-sell.service deploy/aut-sell.timer /etc/systemd/system/
+sudo cp deploy/aut-*.service deploy/aut-*.timer /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now aut-buy.timer aut-sell.timer
+sudo systemctl enable --now aut-buy.timer aut-sell.timer aut-eval.timer
 systemctl list-timers 'aut-*'
 ```
 
 - 페이퍼 (기본): `results/overnight_paper.csv` 에 후보와 15:21 가격을 적고 다음날 08:35 에 시가로 평가해 수익률을 채운다
+- 09:36 eval: 같은 종목을 09:30 에 팔았다면 얼마였는지도 기록한다 (분봉 60일 기준 시가 매도보다 +0.19% 유리했던 변형. 페이퍼로 검증 중)
 - 실주문 (`--real`): 15:21 시장가 매수 (동시호가라 종가 체결) / 08:35 시장가 매도 (장전 동시호가라 시가 체결). 기록은 `results/overnight_log.csv`
 - 로그: `logs/overnight_YYYYMMDD.log`
 

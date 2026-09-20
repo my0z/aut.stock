@@ -172,6 +172,39 @@ def cmd_sell(client: KiwoomClient, a) -> None:
             kakao(msg)
 
 
+def cmd_eval(client: KiwoomClient, a) -> None:
+    """09:35 께 실행. 오늘 시가 매도 대신 09:30 에 팔았다면 얼마였는지 페이퍼에 기록한다 (비교용)."""
+    if not PAPER.exists():
+        return
+    df = pd.read_csv(PAPER, dtype={"code": str})
+    if "exit" not in df:
+        return
+    if "exit_0930" not in df:
+        df["exit_0930"] = float("nan")
+        df["ret_0930"] = float("nan")
+    today = datetime.now(KST).strftime("%Y%m%d")
+    m = (df["side"] == "buy") & df["exit"].notna() & df["exit_0930"].isna()
+    # 오늘 아침 시가로 평가된 행만 (exit 가 채워진 날짜 = 오늘)
+    prices = {}
+    for code in df.loc[m, "code"].unique():
+        try:
+            bars = client.minute_chart(code, tic=1, base_dt=today, max_pages=1)
+            bars = bars[bars.index.strftime("%Y%m%d") == today]
+            b = bars[bars.index.strftime("%H%M") == "0930"]
+            if not b.empty:
+                prices[code] = float(b["open"].iloc[0])
+        except Exception as e:  # noqa: BLE001
+            log.warning("%s 09:30 조회 실패: %s", code, e)
+    m &= df["code"].isin(prices)
+    df.loc[m, "exit_0930"] = df.loc[m, "code"].map(prices)
+    df.loc[m, "ret_0930"] = df.loc[m, "exit_0930"] / df.loc[m, "price"] - 1 - a.cost_bps / 1e4
+    df.to_csv(PAPER, index=False)
+    done = df[m]
+    if not done.empty:
+        log.info("09:30 매도 가정 %d 종목: 평균 %+.3f%% (시가 매도 %+.3f%%)", len(done),
+                 done["ret_0930"].mean() * 100, done["ret"].mean() * 100)
+
+
 def cmd_status(client: KiwoomClient, a) -> None:
     dep = client.deposit()
     summ, pos = client.balance()
@@ -184,7 +217,7 @@ def cmd_status(client: KiwoomClient, a) -> None:
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=["buy", "sell", "status", "select"])
+    ap.add_argument("mode", choices=["buy", "sell", "eval", "status", "select"])
     ap.add_argument("--real", action="store_true")
     ap.add_argument("--top", type=int, default=30)
     ap.add_argument("--min-chg", type=float, default=0.03)
@@ -199,6 +232,8 @@ def main() -> None:
             cmd_buy(client, a)
         elif a.mode == "sell":
             cmd_sell(client, a)
+        elif a.mode == "eval":
+            cmd_eval(client, a)
         elif a.mode == "select":
             print(select(client, a.top, a.min_chg, a.min_price).to_string())
         else:

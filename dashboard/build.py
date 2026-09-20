@@ -64,7 +64,13 @@ def build() -> Path:
             daily = done.groupby("date")["ret"].mean().sort_index()
             eq = (1 + daily).cumprod()
             dd = (eq / eq.cummax() - 1).min()
-            parts.append("<h2>페이퍼 누적</h2>")
+            alt = ""
+            if "ret_0930" in done and done["ret_0930"].notna().any():
+                both = done[done["ret_0930"].notna()]
+                d0 = both.groupby("date")["ret"].mean(); d9 = both.groupby("date")["ret_0930"].mean()
+                alt = (f"<p class='muted'>같은 종목을 09:30 에 팔았다면: 일평균 {_pct(d9.mean())} (시가 매도 {_pct(d0.mean())}) "
+                       f"{len(d9)}일 비교</p>")
+            parts.append("<h2>페이퍼 누적</h2>" + alt)
             parts.append("<div class='cards'>"
                          f"<div class='card'><div class='k'>거래일</div><div class='v'>{len(daily)}</div></div>"
                          f"<div class='card'><div class='k'>일평균</div><div class='v {'up' if daily.mean()>0 else 'down'}'>{_pct(daily.mean())}</div></div>"
@@ -91,6 +97,9 @@ def build() -> Path:
             if evaluated:
                 cols.update({"exit": "익일시가", "ret": "수익률"})
                 fmt.update({"exit": lambda v: f"{float(v):,.0f}" if pd.notna(v) else "-", "ret": _pct})
+                if "ret_0930" in rows and rows["ret_0930"].notna().any():
+                    cols.update({"ret_0930": "09:30매도"})
+                    fmt.update({"ret_0930": _pct})
                 rows = rows.sort_values("ret", ascending=False)
             parts.append(_table(rows, cols, fmt))
 
