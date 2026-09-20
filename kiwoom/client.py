@@ -40,23 +40,40 @@ class Page:
     next_key: str
 
 
+def _clean(v: Any) -> str:
+    """키움 숫자 문자열 정리. '+1,234' '-56' '--30000' (음수를 -- 로 보내기도 한다) '' 등."""
+    s = str(v).strip().replace(",", "")
+    while s.startswith("--"):
+        s = s[1:]
+    if s.startswith("+-") or s.startswith("-+"):
+        s = "-" + s[2:]
+    return s
+
+
 def _num(v: Any) -> float:
-    """키움 숫자 문자열 ('+1,234' '-56' '') -> float. 부호는 등락 표시일 뿐이라 절대값을 쓴다."""
+    """절대값. 가격처럼 부호가 등락 표시일 뿐인 값에 쓴다."""
     if v is None:
         return float("nan")
-    s = str(v).strip().replace(",", "")
+    s = _clean(v)
     if s in ("", "+", "-"):
         return float("nan")
-    return abs(float(s))
+    try:
+        return abs(float(s))
+    except ValueError:
+        return float("nan")
 
 
 def _signed(v: Any) -> float:
+    """부호 유지. 순매수 금액 등락률 등에 쓴다."""
     if v is None:
         return float("nan")
-    s = str(v).strip().replace(",", "")
+    s = _clean(v)
     if s in ("", "+", "-"):
         return float("nan")
-    return float(s)
+    try:
+        return float(s)
+    except ValueError:
+        return float("nan")
 
 
 class KiwoomClient:
