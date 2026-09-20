@@ -53,6 +53,12 @@ def _table(df: pd.DataFrame, cols: dict[str, str], fmt: dict | None = None, cls:
 
 def build() -> Path:
     paper = _read("overnight_paper.csv")
+    if not paper.empty:
+        if "variant" not in paper:
+            paper["variant"] = "base"
+        paper["variant"] = paper["variant"].fillna("base")
+    allpaper = paper
+    paper = paper[paper["variant"] == "base"] if not paper.empty else paper
     live = _read("overnight_log.csv")
     now = datetime.now(KST)
     parts = [f"<p class='muted'>갱신 {now:%Y-%m-%d %H:%M} KST</p>"]
@@ -107,6 +113,18 @@ def build() -> Path:
     if not live.empty:
         parts.append("<h2>실주문 기록 (최근 60건)</h2>")
         parts.append(_table(live.tail(60).iloc[::-1], {"date": "날짜", "time": "시각", "side": "구분", "name": "종목", "qty": "수량", "price": "가격", "ord_no": "주문번호"}))
+
+    # 변형 비교
+    if not allpaper.empty and "ret" in allpaper and allpaper["variant"].nunique() > 1:
+        ev = allpaper[allpaper["ret"].notna()]
+        if not ev.empty:
+            g = ev.groupby(["variant", "date"])["ret"].mean().groupby("variant")
+            vt = pd.DataFrame({"days": g.size(), "avg": g.mean(), "win": g.apply(lambda s: (s > 0).mean()),
+                               "cum": g.apply(lambda s: (1 + s).prod() - 1)}).reset_index().sort_values("avg", ascending=False)
+            names = {"base": "채택안 (동시순매수 +3% 상위30)", "surge": "급등 10%+", "small": "소형주 가중", "sellside": "동시 순매도 +3%", "top50": "상위 50"}
+            vt["variant"] = vt["variant"].map(lambda v: names.get(v, v))
+            parts.append("<h2>변형 비교 (페이퍼)</h2>" + _table(vt, {"variant": "변형", "days": "일수", "avg": "일평균", "win": "일승률", "cum": "누적"},
+                                                          {"avg": _pct, "cum": _pct, "win": lambda v: f"{float(v)*100:.0f}%"}))
 
     # KRX 확정 데이터와 잠정 선정 비교
     panel = ROOT / "data" / "panel.parquet"

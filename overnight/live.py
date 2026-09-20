@@ -24,6 +24,8 @@ from kiwoom import KiwoomClient
 from kiwoom.client import KST, _signed
 from notify.kakao import send as kakao
 
+from .variants import BASE, VARIANTS
+
 log = logging.getLogger("overnight")
 RESULTS = Path(__file__).resolve().parent.parent / "results"
 PAPER = RESULTS / "overnight_paper.csv"
@@ -50,15 +52,18 @@ def intraday_flow(client: KiwoomClient, invsr: str, market: str = "000") -> pd.D
     return out.drop_duplicates("code").set_index("code")
 
 
-def select(client: KiwoomClient, top: int, min_chg: float, min_price: float) -> pd.DataFrame:
-    """기관과 외국인 모두 순매수 + 등락률 필터 -> 합계 금액 상위 top."""
+def fetch_flows(client: KiwoomClient) -> pd.DataFrame:
+    """기관과 외국인 표를 합친다. columns: name price chg net_i net_f (index=code)."""
     inst = intraday_flow(client, "7")
     frgn = intraday_flow(client, "6")
     both = inst.join(frgn[["net"]].rename(columns={"net": "net_f"}), how="inner")
-    both = both.rename(columns={"net": "net_i"})
-    both = both[(both["net_i"] > 0) & (both["net_f"] > 0) & (both["chg"] >= min_chg) & (both["price"] >= min_price)]
-    both["score"] = both["net_i"] + both["net_f"]
-    return both.sort_values("score", ascending=False).head(top)
+    return both.rename(columns={"net": "net_i"})
+
+
+def select(client: KiwoomClient, top: int, min_chg: float, min_price: float, flows: pd.DataFrame | None = None) -> pd.DataFrame:
+    """채택안 선정 (variants.base)."""
+    from .variants import base
+    return base(flows if flows is not None else fetch_flows(client), top=top, min_chg=min_chg, min_price=min_price)
 
 
 def _append(path: Path, row: dict) -> None:
@@ -71,11 +76,32 @@ def _append(path: Path, row: dict) -> None:
         w.writerow(row)
 
 
+def _record_variants(flows: pd.DataFrame, now: datetime, a) -> dict[str, int]:
+    """변형별 후보를 페이퍼 파일에 variant 컬럼과 함께 기록한다 (주문은 내지 않는다)."""
+    counts = {}
+    for name, fn in VARIANTS.items():
+        try:
+            picks = fn(flows)
+        except Exception as e:  # noqa: BLE001
+            log.warning("변형 %s 실패: %s", name, e)
+            continue
+        counts[name] = len(picks)
+        for code, r in picks.iterrows():
+            _append(PAPER, {
+                "date": now.strftime("%Y-%m-%d"), "time": now.strftime("%H:%M:%S"), "code": code, "name": r["name"],
+                "side": "buy", "qty": 0, "price": r["price"], "chg": round(r["chg"], 4),
+                "net_i": r["net_i"], "net_f": r["net_f"], "ord_no": "", "variant": name,
+            })
+    return counts
+
+
 def cmd_buy(client: KiwoomClient, a) -> None:
     now = datetime.now(KST)
-    picks = select(client, a.top, a.min_chg, a.min_price)
+    flows = fetch_flows(client)
+    picks = select(client, a.top, a.min_chg, a.min_price, flows)
     if picks.empty:
         log.warning("후보 없음")
+        kakao(f"[aut.stock] {now:%m/%d} 후보 없음 (휴장이거나 조건 미달)")
         return
     if a.real:
         capital = a.capital or client.deposit()["orderable"]
@@ -98,12 +124,15 @@ def cmd_buy(client: KiwoomClient, a) -> None:
         _append(PAPER if not a.real else LOG, {
             "date": now.strftime("%Y-%m-%d"), "time": now.strftime("%H:%M:%S"), "code": code, "name": r["name"],
             "side": "buy", "qty": qty, "price": r["price"], "chg": round(r["chg"], 4),
-            "net_i": r["net_i"], "net_f": r["net_f"], "ord_no": ord_no,
+            "net_i": r["net_i"], "net_f": r["net_f"], "ord_no": ord_no, "variant": BASE,
         })
     log.info("매수 %d 종목 기록", len(picks))
+    counts = _record_variants(flows, now, a)
+    log.info("변형 기록: %s", counts)
     head = f"[aut.stock] {now:%m/%d} {'실주문' if a.real else '페이퍼'} 매수 {len(picks)}종목 (종목당 {per/10000:.0f}만원)"
     body = "\n".join(f"{r['name']} {r['price']:,.0f} {r['chg']*100:+.1f}%" for _, r in picks.iterrows())
-    kakao(head + "\n" + body)
+    tail = "변형 후보: " + " ".join(f"{k}{v}" for k, v in counts.items())
+    kakao(head + "\n" + body + "\n" + tail)
 
 
 def cmd_sell(client: KiwoomClient, a) -> None:
@@ -153,11 +182,17 @@ def cmd_sell(client: KiwoomClient, a) -> None:
     df.loc[m, "exit"] = df.loc[m, "code"].map(exits)
     df.loc[m, "ret"] = df.loc[m, "exit"] / df.loc[m, "price"] - 1 - a.cost_bps / 1e4
     df.to_csv(PAPER, index=False)
-    done = df[m]
+    if "variant" not in df:
+        df["variant"] = BASE
+    df["variant"] = df["variant"].fillna(BASE)
+    vsum = df[m].groupby("variant")["ret"].agg(["count", "mean"])
+    if not vsum.empty:
+        log.info("변형별 오늘: %s", " ".join(f"{k}:{v['mean']*100:+.2f}%({int(v['count'])})" for k, v in vsum.iterrows()))
+    done = df[m & (df["variant"] == BASE)]
     if not done.empty:
         log.info("페이퍼 청산 %d 종목: 평균 %+.3f%% 승률 %.0f%%", len(done), done["ret"].mean() * 100, (done["ret"] > 0).mean() * 100)
         print(done[["date", "code", "name", "price", "exit", "ret"]].to_string())
-    allp = df[df["ret"].notna()]
+    allp = df[df["ret"].notna() & (df["variant"] == BASE)]
     if not allp.empty:
         daily = allp.groupby("date")["ret"].mean()
         log.info("페이퍼 누적: %d 일 일평균 %+.3f%% 일승률 %.0f%% 누적 %+.1f%%", len(daily), daily.mean() * 100,
@@ -169,6 +204,8 @@ def cmd_sell(client: KiwoomClient, a) -> None:
                    + "상승: " + " ".join(f"{r['name']} {r['ret']*100:+.1f}%" for _, r in best.iterrows()) + "\n"
                    + "하락: " + " ".join(f"{r['name']} {r['ret']*100:+.1f}%" for _, r in worst.iterrows()) + "\n"
                    + f"누적 {len(daily)}일 일평균 {daily.mean()*100:+.2f}% 누적 {((1+daily).prod()-1)*100:+.1f}%")
+            if not vsum.empty:
+                msg += "\n변형: " + " ".join(f"{k} {v['mean']*100:+.2f}%" for k, v in vsum.iterrows() if k != BASE)
             kakao(msg)
 
 
