@@ -12,8 +12,20 @@ from typing import Callable
 
 import pandas as pd
 
+from datetime import time as dtime
+
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 MINUTE_DIR = DATA_DIR / "minute"
+SESSION_START = dtime(9, 0)
+SESSION_END = dtime(15, 30)  # 15:30 봉 (동시호가 체결) 까지 포함
+
+
+def regular_session(df: pd.DataFrame) -> pd.DataFrame:
+    """키움 분봉은 NXT 프리/애프터마켓 (08:00~20:00) 까지 섞여 온다. 정규장 봉만 남긴다."""
+    if df.empty:
+        return df
+    t = pd.to_datetime(df["time"]).dt.time
+    return df[(t >= SESSION_START) & (t <= SESSION_END)]
 
 
 @dataclass

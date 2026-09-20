@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .bars import Bar, load_days
+from .bars import Bar, load_days, regular_session
 from .strategy import ORBParams, simulate_day
 from .universe import panel_universe
 
@@ -20,7 +20,7 @@ from .universe import panel_universe
 def run(minute: pd.DataFrame, p: ORBParams, cost_bps: float, top: int | None,
         universe: dict[str, list[str]] | None = None) -> pd.DataFrame:
     trades = []
-    minute = minute.sort_values(["code", "time"])
+    minute = regular_session(minute).sort_values(["code", "time"])
     minute["day"] = pd.to_datetime(minute["time"]).dt.strftime("%Y%m%d")
     for (day, code), g in minute.groupby(["day", "code"], sort=True):
         if universe is not None:

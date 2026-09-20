@@ -21,7 +21,7 @@ import pandas as pd
 from kiwoom import KiwoomClient, TradeStream
 from kiwoom.client import KST
 
-from .bars import BarBuilder, bars_to_frame, save_day
+from .bars import MINUTE_DIR, BarBuilder, bars_to_frame, regular_session, save_day
 from .universe import kiwoom_universe, panel_universe_union
 
 log = logging.getLogger("collect")
@@ -30,9 +30,11 @@ log = logging.getLogger("collect")
 def _save_minute_frame(code: str, df: pd.DataFrame) -> int:
     if df.empty:
         return 0
-    out = df.reset_index().rename(columns={"time": "time"})
+    out = df.reset_index()
     out["code"] = code
-    out = out[["code", "time", "open", "high", "low", "close", "volume"]]
+    out = regular_session(out[["code", "time", "open", "high", "low", "close", "volume"]])
+    if out.empty:
+        return 0
     n = 0
     for day, g in out.groupby(out["time"].dt.strftime("%Y%m%d")):
         save_day(g, day)
@@ -41,26 +43,52 @@ def _save_minute_frame(code: str, df: pd.DataFrame) -> int:
 
 
 def cmd_history(client: KiwoomClient, days: int, top: int, codes: list[str] | None) -> None:
+    """최근 days 거래일 동안 날짜별 유니버스 종목의 그날 1분봉을 받는다.
+
+    키움 분봉은 base_dt 기준 최신 900봉이 한 페이지라 하루치 (정규장 381봉 + NXT) 는 한 페이지에 들어온다.
+    -> (날짜 x 종목) 당 요청 1건. 60일 x 30종목 = 1800 건 = 약 30분.
+    """
     end = datetime.now(KST).date()
     start = end - timedelta(days=int(days * 1.5) + 7)
     since = start.strftime("%Y%m%d")
     if codes:
-        universe = codes
+        per_day = {}
+        pn_days = panel_universe_union(since, end.strftime("%Y%m%d"), 1)
+        for d in list(pn_days)[-days:]:
+            per_day[d] = codes
     else:
         per_day = panel_universe_union(since, end.strftime("%Y%m%d"), top)
-        if not per_day:
-            print("KRX 패널이 없다. --codes 로 직접 지정하거나 fetch_data.py 를 먼저 실행한다", file=sys.stderr)
-            sys.exit(1)
-        universe = sorted({c for u in per_day.values() for c in u})
-    print(f"{since} 이후 분봉 수집 대상 {len(universe)} 종목")
-    max_pages = max(2, days * 400 // 900 + 2)  # 하루 약 390봉 기준
-    for i, code in enumerate(universe, 1):
-        try:
-            df = client.minute_chart(code, tic=1, max_pages=max_pages, since=since)
-            n = _save_minute_frame(code, df[df.index >= pd.Timestamp(start)])
-            print(f"[{i}/{len(universe)}] {code} {n} 봉", flush=True)
-        except Exception as e:  # noqa: BLE001
-            print(f"[{i}/{len(universe)}] {code} 실패: {e}", file=sys.stderr)
+        per_day = dict(list(per_day.items())[-days:])
+    if not per_day:
+        print("KRX 패널이 없다. fetch_data.py 와 pack_data.py 를 먼저 실행한다", file=sys.stderr)
+        sys.exit(1)
+    total = sum(len(v) for v in per_day.values())
+    print(f"{len(per_day)} 거래일 x 유니버스 = {total} 건 수집 (약 {total // 60 + 1} 분)")
+    done = 0
+    for day, universe in per_day.items():
+        existing = set()
+        path = MINUTE_DIR / f"{day}.parquet"
+        if path.exists():
+            existing = set(pd.read_parquet(path, columns=["code"])["code"].unique())
+        frames = []
+        for code in universe:
+            done += 1
+            if code in existing:
+                continue
+            try:
+                df = client.minute_chart(code, tic=1, base_dt=day, max_pages=1)
+                df = df[df.index.strftime("%Y%m%d") == day]
+                if df.empty:
+                    continue
+                out = df.reset_index()
+                out["code"] = code
+                frames.append(out[["code", "time", "open", "high", "low", "close", "volume"]])
+            except Exception as e:  # noqa: BLE001
+                print(f"{day} {code} 실패: {e}", file=sys.stderr)
+        if frames:
+            merged = regular_session(pd.concat(frames, ignore_index=True))
+            save_day(merged, day)
+        print(f"[{done}/{total}] {day} {len(frames)} 종목 저장", flush=True)
 
 
 def cmd_today(client: KiwoomClient, top: int, codes: list[str] | None) -> None:

@@ -27,6 +27,7 @@ from .bars import Bar
 
 @dataclass
 class ORBParams:
+    or_start: dtime = dtime(9, 0)  # 이전 봉 (NXT 프리마켓) 은 무시
     or_end: dtime = dtime(9, 30)
     entry_end: dtime = dtime(14, 0)
     exit_time: dtime = dtime(15, 10)
@@ -90,6 +91,8 @@ class ORBEngine:
         p = self.p
         st = self._st(bar.code, bar.time.date())
         t = bar.time.time()
+        if t < p.or_start:
+            return None
         st.cum_pv += bar.close * bar.volume
         st.cum_v += bar.volume
 
