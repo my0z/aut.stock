@@ -164,7 +164,7 @@ def main() -> None:
     from pathlib import Path
 
     out = Path(a.out)
-    out.mkdir(exist_ok=True)
+    out.mkdir(parents=True, exist_ok=True)
     for name, r in res.items():
         r["trades"].to_csv(out / f"trades_{name}.csv", index=False)
     print(f"\n트레이드 목록 저장: {out}/")
