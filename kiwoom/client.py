@@ -23,6 +23,7 @@ KST = timezone(timedelta(hours=9))
 BASE_URLS = {"real": "https://api.kiwoom.com", "demo": "https://mockapi.kiwoom.com"}
 WS_URLS = {"real": "wss://api.kiwoom.com:10000", "demo": "wss://mockapi.kiwoom.com:10000"}
 AUTH_RETRY_CODES = {8005, 8031, 8103}
+RATE_LIMIT_CODE = 1700  # 허용된 API 요청 개수 초과 (초당 1건)
 
 
 class KiwoomError(RuntimeError):
@@ -60,7 +61,7 @@ def _signed(v: Any) -> float:
 
 class KiwoomClient:
     def __init__(self, mode: str | None = None, appkey: str | None = None, secret: str | None = None,
-                 timeout: int = 30, min_interval: float = 0.25):
+                 timeout: int = 30, min_interval: float = 1.0):
         self.mode = (mode or os.environ.get("KIWOOM_MODE") or "demo").lower()
         if self.mode not in BASE_URLS:
             raise ValueError("KIWOOM_MODE 는 real 또는 demo")
@@ -105,7 +106,8 @@ class KiwoomClient:
 
     # ---------- 공통 호출 ----------
     def call(self, api_id: str, path: str, body: dict | None = None,
-             cont_yn: str | None = None, next_key: str | None = None, _retry: bool = True) -> Page:
+             cont_yn: str | None = None, next_key: str | None = None, _retry: bool = True,
+             _rate_tries: int = 5) -> Page:
         headers = {
             "Content-Type": "application/json;charset=UTF-8",
             "api-id": api_id,
@@ -126,6 +128,13 @@ class KiwoomClient:
         if _retry and (r.status_code == 401 or code in AUTH_RETRY_CODES or embedded in AUTH_RETRY_CODES):
             self._token = None
             return self.call(api_id, path, body, cont_yn, next_key, _retry=False)
+        if embedded == RATE_LIMIT_CODE or code == RATE_LIMIT_CODE:
+            if _rate_tries <= 0:
+                raise KiwoomError(RATE_LIMIT_CODE, str(data.get("return_msg", "요청 한도 초과")))
+            wait = 1.0 * (6 - _rate_tries)
+            log.info("%s 요청 한도 초과. %.0f초 대기 후 재시도", api_id, wait)
+            time.sleep(wait)
+            return self.call(api_id, path, body, cont_yn, next_key, _retry, _rate_tries - 1)
         if r.status_code >= 400 or code not in (None, 0):
             raise KiwoomError(code, str(data.get("return_msg", f"HTTP {r.status_code}")))
         return Page(data, r.headers.get("cont-yn", "N"), r.headers.get("next-key", ""))
@@ -281,9 +290,10 @@ def _code(v: Any) -> int | None:
 def _embedded_code(msg: Any) -> int | None:
     """return_msg 가 '[8005:...]' 형태로 실제 코드를 품는 경우."""
     s = str(msg or "")
-    if s.startswith("[") and ":" in s:
+    i = s.find("[")
+    if i >= 0 and ":" in s[i:]:
         try:
-            return int(s[1:s.index(":")])
+            return int(s[i + 1:s.index(":", i)])
         except ValueError:
             return None
     return None

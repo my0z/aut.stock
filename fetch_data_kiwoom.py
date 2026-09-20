@@ -21,7 +21,7 @@ def main() -> None:
     ap.add_argument("--years", type=int, default=3)
     ap.add_argument("--all", action="store_true")
     ap.add_argument("--limit", type=int, default=0)
-    ap.add_argument("--sleep", type=float, default=0.3)
+    ap.add_argument("--sleep", type=float, default=1.0, help="요청 간격 (초). 키움은 초당 1건 제한")
     ap.add_argument("--mode", help="real 또는 demo. 시세 조회는 둘 다 된다")
     a = ap.parse_args()
     start, end = default_range(a.years)
