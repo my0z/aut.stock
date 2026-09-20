@@ -11,6 +11,7 @@ KIWOOM_MODE=demo                       # 모의투자. 실계좌는 real
 KIWOOM_APPKEY=발급받은앱키
 KIWOOM_SECRET=발급받은시크릿
 KAKAO_REST_KEY=카카오앱REST키            # 카톡 알림 (선택)
+KAKAO_CLIENT_SECRET=클라이언트시크릿코드   # 플랫폼 키 > 클라이언트 시크릿 활성화 시
 OVERNIGHT_ARGS=--top 30 --min-chg 0.03  # 실주문은 여기에 --real 추가
 X
 chmod 600 .env

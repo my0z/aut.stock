@@ -1,7 +1,8 @@
 """카카오톡 '나에게 보내기' 알림.
 
 환경변수
-- KAKAO_REST_KEY   카카오 개발자 앱의 REST API 키
+- KAKAO_REST_KEY        카카오 개발자 앱의 REST API 키
+- KAKAO_CLIENT_SECRET   플랫폼 키 > 클라이언트 시크릿 (카카오 로그인) 이 활성화돼 있으면 필요
 - KAKAO_TOKEN_FILE 토큰 저장 파일 (기본 ~/.kakao_token.json)
 
 최초 1회 인증:
@@ -33,6 +34,11 @@ def _rest_key() -> str:
     return k
 
 
+def _secret() -> dict:
+    sec = os.environ.get("KAKAO_CLIENT_SECRET", "")
+    return {"client_secret": sec} if sec else {}
+
+
 def _load() -> dict:
     if TOKEN_FILE.exists():
         return json.loads(TOKEN_FILE.read_text())
@@ -52,7 +58,7 @@ def auth_url() -> str:
 def exchange_code(code: str) -> dict:
     r = requests.post("https://kauth.kakao.com/oauth/token", data={
         "grant_type": "authorization_code", "client_id": _rest_key(),
-        "redirect_uri": REDIRECT_URI, "code": code,
+        "redirect_uri": REDIRECT_URI, "code": code, **_secret(),
     }, timeout=30)
     data = r.json()
     if "access_token" not in data:
@@ -70,7 +76,7 @@ def access_token() -> str:
     if age < tok.get("expires_in", 21600) - 300:
         return tok["access_token"]
     r = requests.post("https://kauth.kakao.com/oauth/token", data={
-        "grant_type": "refresh_token", "client_id": _rest_key(), "refresh_token": tok["refresh_token"],
+        "grant_type": "refresh_token", "client_id": _rest_key(), "refresh_token": tok["refresh_token"], **_secret(),
     }, timeout=30)
     data = r.json()
     if "access_token" not in data:
