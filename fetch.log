@@ -1,0 +1,67 @@
+nohup: ignoring input
+KRX 로그인 시도...
+  로그인 ID: landma
+KRX 로그인 완료.
+  로그인 시간: 2026-09-20 11:41:42
+  만료 시간: 2026-09-20 12:41:42
+기간 20230921~20260920 종목 2762개
+Error occurred in get_market_trading_value_and_volume_on_ticker_by_date: Length mismatch: Expected axis has 0 elements, new values have 6 elements
+Error occurred in get_market_trading_value_and_volume_on_ticker_by_date: Length mismatch: Expected axis has 0 elements, new values have 6 elements
+Error occurred in get_market_trading_value_and_volume_on_ticker_by_date: Length mismatch: Expected axis has 0 elements, new values have 6 elements
+[800/2762] 진행 중 (실패 1)
+[850/2762] 진행 중 (실패 1)
+[900/2762] 진행 중 (실패 1)
+[950/2762] 진행 중 (실패 1)
+[1000/2762] 진행 중 (실패 1)
+[1050/2762] 진행 중 (실패 1)
+[1100/2762] 진행 중 (실패 1)
+[1150/2762] 진행 중 (실패 1)
+[1200/2762] 진행 중 (실패 1)
+Error occurred in get_market_trading_value_and_volume_on_ticker_by_date: Length mismatch: Expected axis has 0 elements, new values have 6 elements
+Error occurred in get_market_trading_value_and_volume_on_ticker_by_date: Length mismatch: Expected axis has 0 elements, new values have 6 elements
+Error occurred in get_market_trading_value_and_volume_on_ticker_by_date: Length mismatch: Expected axis has 0 elements, new values have 6 elements
+[1250/2762] 진행 중 (실패 2)
+Error occurred in get_market_trading_value_and_volume_on_ticker_by_date: Length mismatch: Expected axis has 0 elements, new values have 6 elements
+Error occurred in get_market_trading_value_and_volume_on_ticker_by_date: Length mismatch: Expected axis has 0 elements, new values have 6 elements
+Error occurred in get_market_trading_value_and_volume_on_ticker_by_date: Length mismatch: Expected axis has 0 elements, new values have 6 elements
+[1300/2762] 진행 중 (실패 3)
+[1350/2762] 진행 중 (실패 3)
+[1400/2762] 진행 중 (실패 3)
+[1450/2762] 진행 중 (실패 3)
+[1500/2762] 진행 중 (실패 3)
+Error occurred in get_market_trading_value_and_volume_on_ticker_by_date: Length mismatch: Expected axis has 0 elements, new values have 6 elements
+Error occurred in get_market_trading_value_and_volume_on_ticker_by_date: Length mismatch: Expected axis has 0 elements, new values have 6 elements
+Error occurred in get_market_trading_value_and_volume_on_ticker_by_date: Length mismatch: Expected axis has 0 elements, new values have 6 elements
+[1550/2762] 진행 중 (실패 4)
+[1600/2762] 진행 중 (실패 4)
+[1650/2762] 진행 중 (실패 4)
+Error occurred in get_market_trading_value_and_volume_on_ticker_by_date: Length mismatch: Expected axis has 0 elements, new values have 6 elements
+Error occurred in get_market_trading_value_and_volume_on_ticker_by_date: Length mismatch: Expected axis has 0 elements, new values have 6 elements
+Error occurred in get_market_trading_value_and_volume_on_ticker_by_date: Length mismatch: Expected axis has 0 elements, new values have 6 elements
+[1700/2762] 진행 중 (실패 5)
+[1750/2762] 진행 중 (실패 5)
+[1800/2762] 진행 중 (실패 5)
+[1850/2762] 진행 중 (실패 5)
+[1900/2762] 진행 중 (실패 5)
+[1950/2762] 진행 중 (실패 5)
+Error occurred in get_market_trading_value_and_volume_on_ticker_by_date: Length mismatch: Expected axis has 0 elements, new values have 6 elements
+Error occurred in get_market_trading_value_and_volume_on_ticker_by_date: Length mismatch: Expected axis has 0 elements, new values have 6 elements
+Error occurred in get_market_trading_value_and_volume_on_ticker_by_date: Length mismatch: Expected axis has 0 elements, new values have 6 elements
+[2000/2762] 진행 중 (실패 6)
+[2050/2762] 진행 중 (실패 6)
+[2100/2762] 진행 중 (실패 6)
+[2150/2762] 진행 중 (실패 6)
+[2200/2762] 진행 중 (실패 6)
+[2250/2762] 진행 중 (실패 6)
+[2300/2762] 진행 중 (실패 6)
+[2350/2762] 진행 중 (실패 6)
+[2400/2762] 진행 중 (실패 6)
+[2450/2762] 진행 중 (실패 6)
+[2500/2762] 진행 중 (실패 6)
+[2550/2762] 진행 중 (실패 6)
+[2600/2762] 진행 중 (실패 6)
+[2650/2762] 진행 중 (실패 6)
+[2700/2762] 진행 중 (실패 6)
+[2750/2762] 진행 중 (실패 6)
+수집 완료: 가격 2762 / 투자자 2756 종목. 이번 실행 실패 6
+실패 종목은 다시 실행하면 이어서 받는다
