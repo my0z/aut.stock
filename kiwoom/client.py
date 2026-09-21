@@ -296,14 +296,19 @@ class KiwoomClient:
 
 
     US_EXCHANGES = ("NY", "ND", "NA")  # NYSE / NASDAQ / AMEX
-    def us_daily_chart(self, code: str, exch: str = "%", start: str | None = None, max_pages: int = 10) -> pd.DataFrame:
-        """usa06012 미국주식 일봉. exch: NY/ND/NA/% (전체)."""
-        body = {"stex_tp": exch, "stk_cd": code, "strt_dt": start or "19900101",
+    def us_daily_chart(self, code: str, exch: str = "%", anchor: str | None = None,
+                       since: str | None = None, max_pages: int = 20) -> pd.DataFrame:
+        """usa06012 미국주식 일봉. strt_dt 는 '이 날짜부터 과거로' 페이징하는 기준일이다
+        (최신 데이터를 원하면 anchor 를 오늘로 두고 since 까지 페이징한다). 기준일 자체가 아니라
+        그 이전 데이터를 원할 때 흔히 하는 실수다 — anchor 를 옛날 날짜로 주면 그 날짜 근방 한두 건만 온다."""
+        body = {"stex_tp": exch, "stk_cd": code, "strt_dt": anchor or datetime.now(KST).strftime("%Y%m%d"),
                 "upd_stkpc_tp": "1", "exrt_appl_tp": "0"}
         rows: list[dict] = []
         for page in self.pages("usa06012", "/api/us/chart", body, max_pages):
             recs = page.get("result_list") or next((v for v in page.values() if isinstance(v, list)), [])
             rows.extend(recs)
+            if since and recs and str(recs[-1].get("dt", ""))[:8] < since:
+                break
         return _us_chart_frame(rows)
 
     def us_price_surge(self, exch: str = "0", flu_tp: str = "1", tm_tp: str = "2", tm: str = "1",
