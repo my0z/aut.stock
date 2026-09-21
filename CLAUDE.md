@@ -27,5 +27,15 @@
 - 서버: 오라클 VM (ubuntu@relay, ~/aut.stock, venv ~/.venv). 키는 서버 .env 에만 둔다. 채팅에 키를 올리지 않는다
 - 모의투자 페이퍼 모드. `results/overnight_paper.csv` 에 매일 기록. 실주문은 .env OVERNIGHT_ARGS 에 --real
 
+## 미국주식 (overseas/) — 실험 단계
+- 국내와 달리 종목별 기관/외국인 일별 수급 데이터가 무료로 없음 -> "당일 등락률 상위" 를 대체 신호로 씀
+- `overseas/universe.py` curated 179 종목 (S&P/Nasdaq 대형주 위주). `overseas/fetch_data.py` 로 3년 일봉 수집
+  (`data/us_panel.parquet`). `overseas/backtest.py` 로 가설(장중 vs 오버나이트) 과 신호를 검증
+- **아직 실데이터로 검증 안 됨** (개발 환경이 키움 API 에 접속 못 함). 서버에서 fetch+backtest 를 먼저 돌려
+  실제 숫자를 확인하기 전에는 live.py 를 페이퍼 이상으로 쓰지 않는다
+- `overseas/live.py buy|sell|select|status`. buy 는 미국 장마감 10분전 LOC 종가매수, sell 은 다음 개장 직후 시장가 매도
+- `kiwoom/client.py` 의 `us_*`/`buy_us`/`sell_us` 가 미국주식 API (일봉/랭킹/주문/계좌). 토큰은 국내와 공유
+- 타이머는 `America/New_York` 시간대로 등록해 서머타임을 systemd 가 처리 (`deploy/aut-us-*.timer`)
+
 ## 테스트
-`python test_backtest.py && python -m intraday.test_intraday`
+`python test_backtest.py && python -m intraday.test_intraday && python -m overseas.test_overseas`

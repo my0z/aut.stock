@@ -1,0 +1,9 @@
+[Unit]
+Description=US overnight sell weekdays 09:31 America/New_York (DST-safe)
+
+[Timer]
+OnCalendar=Mon..Fri 09:31 America/New_York
+Persistent=false
+
+[Install]
+WantedBy=timers.target

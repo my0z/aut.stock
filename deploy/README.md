@@ -86,3 +86,29 @@ https: `sudo certbot --nginx -d ab.usb.kr` (certbot 이 없으면 `sudo apt inst
 `aut-update.timer` 가 평일 16:40 에 `update_daily.py` 를 돌려 그날 확정 시세와 기관·외국인 순매수를 `data/panel.parquet` 에 덧붙인다.
 하루 요청 6번이라 KRX 차단 걱정이 없다. 대시보드에 데이터 기간과 "잠정 선정 vs 확정 후보 겹침" 이 표시된다.
 백테스트를 최신으로 다시 돌리려면 `python -m overnight.backtest` 를 실행한다.
+
+
+## 미국주식 오버나이트 (실험 단계 — 아직 실데이터 백테스트 없음)
+
+국내와 달리 기관/외국인 일별 수급 데이터가 없어 '당일 등락률 상위' 를 대체 신호로 쓴다.
+반드시 `python -m overseas.fetch_data` 로 데이터를 모으고 `python -m overseas.backtest` 로
+실제 숫자를 확인한 뒤 페이퍼로 넘어간다. 국내 오버나이트처럼 3년 검증을 거친 게 아니다.
+
+```bash
+cd ~/aut.stock && git pull
+set -a; source .env; set +a          # KIWOOM_MODE/APPKEY/SECRET 재사용
+python -m overseas.test_overseas                       # 로직 검증
+python -m overseas.fetch_data                           # curated 179종목 3년 일봉 (약 3분)
+python -m overseas.backtest --top 20 --min-chg 0.03     # 실제 숫자 확인
+python -m overseas.live select                          # 지금 후보 (미국 장중에만 값이 나옴)
+
+# 매매 시간은 America/New_York 로 등록해 서머타임을 systemd 가 알아서 처리한다
+sudo cp deploy/aut-us-buy.service deploy/aut-us-buy.timer deploy/aut-us-sell.service deploy/aut-us-sell.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now aut-us-buy.timer aut-us-sell.timer
+```
+
+- buy: 미국 장 마감 10분 전 (15:50 ET) LOC(종가지정가) 매수. 종가가 지정 범위 안이면 종가로 체결된다
+- sell: 다음 개장 직후 (09:31 ET) 시장가 매도. 미국은 한국의 동시호가 같은 "개장가 보장" 주문이
+  Kiwoom API 사양에서 확인되지 않아 순수 시장가라 슬리피지가 국내보다 클 수 있다
+- 페이퍼 기록: `results/overseas_paper.csv`. 자본은 USD 기준 (`--capital`)

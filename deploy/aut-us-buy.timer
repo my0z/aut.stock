@@ -1,0 +1,9 @@
+[Unit]
+Description=US overnight buy weekdays 15:50 America/New_York (10 min before close, DST-safe)
+
+[Timer]
+OnCalendar=Mon..Fri 15:50 America/New_York
+Persistent=false
+
+[Install]
+WantedBy=timers.target

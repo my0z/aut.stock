@@ -295,6 +295,83 @@ class KiwoomClient:
         return ord_no
 
 
+    US_EXCHANGES = ("NY", "ND", "NA")  # NYSE / NASDAQ / AMEX
+    def us_daily_chart(self, code: str, exch: str = "%", start: str | None = None, max_pages: int = 10) -> pd.DataFrame:
+        """usa06012 미국주식 일봉. exch: NY/ND/NA/% (전체)."""
+        body = {"stex_tp": exch, "stk_cd": code, "strt_dt": start or "19900101",
+                "upd_stkpc_tp": "1", "exrt_appl_tp": "0"}
+        rows: list[dict] = []
+        for page in self.pages("usa06012", "/api/us/chart", body, max_pages):
+            recs = page.get("result_list") or next((v for v in page.values() if isinstance(v, list)), [])
+            rows.extend(recs)
+        return _us_chart_frame(rows)
+
+    def us_price_surge(self, exch: str = "0", flu_tp: str = "1", tm_tp: str = "2", tm: str = "1",
+                       max_pages: int = 3) -> pd.DataFrame:
+        """usa20930 등락률 상위 (급등/급락). flu_tp 1:급등 2:급락. tm_tp 1:분전 2:일전. exch 0:전체 1:NYSE 2:NASDAQ 3:AMEX."""
+        body = {"stex_tp": exch, "stk_tp": "1", "inds_cd": "000", "stk_cnd": "0", "flu_tp": flu_tp,
+                "tm_tp": tm_tp, "tm": tm, "pric_cnd": "0", "trde_qty_tp": "0", "trde_prica_cnd": "0"}
+        rows: list[dict] = []
+        for page in self.pages("usa20930", "/api/us/stkinfo", body, max_pages):
+            key = next((k for k, v in page.items() if isinstance(v, list)), None)
+            if key:
+                rows.extend(page[key])
+        return _us_rank_frame(rows)
+
+    def us_gap(self, exch: str = "0", updown_tp: str = "1", alacc_rt: str = "3", max_pages: int = 3) -> pd.DataFrame:
+        """usa24140 갭 상승/하락. updown_tp 1:갭상승 2:갭하락. alacc_rt 갭비율 최소 (3/5/10/50/100/150/200)."""
+        body = {"stex_tp": exch, "inds_cd": "000", "stk_tp": "1", "sort_tp": "1", "updown_tp": updown_tp,
+                "alacc_rt": alacc_rt, "stk_cnd": "0", "pric_cnd": "0", "trde_prica_cnd": "0", "trde_qty_tp": "0"}
+        rows: list[dict] = []
+        for page in self.pages("usa24140", "/api/us/stkinfo", body, max_pages):
+            key = next((k for k, v in page.items() if isinstance(v, list)), None)
+            if key:
+                rows.extend(page[key])
+        return _us_rank_frame(rows)
+
+    def us_deposit(self) -> dict:
+        """ust21063 류. 통화별 외화예수금/주문가능금액. 여기서는 USD 행만 골라 돌려준다."""
+        p = self.call("ust21063", "/api/us/acnt", {"qry_tp": "1"})
+        rows = p.body.get("wcnt_entr_tot") or next((v for v in p.body.values() if isinstance(v, list)), [])
+        usd = next((r for r in rows if str(r.get("crnc_code", "")).upper() == "USD"), None)
+        if usd is None:
+            return {"cash": float("nan"), "orderable": float("nan"), "raw": p.body}
+        return {"cash": _num(usd.get("fc_entra")), "orderable": _num(usd.get("fc_ord_alowa")), "raw": usd}
+
+    def us_balance(self) -> pd.DataFrame:
+        """ust21070 원장잔고. 거래소별로 나눠 조회하는 사양이라 3개 거래소를 합친다."""
+        frames = []
+        for exch in self.US_EXCHANGES:
+            p = self.call("ust21070", "/api/us/acnt", {"stex_tp": exch})
+            rows = next((v for v in p.body.values() if isinstance(v, list)), [])
+            if rows:
+                frames.append(pd.DataFrame(rows).assign(stex_tp=exch))
+        if not frames:
+            return pd.DataFrame()
+        pos = pd.concat(frames, ignore_index=True)
+        for c in ("poss_qty", "sell_alowq", "frgn_stk_book_uv", "now_pric", "evlt_amt", "pl_amt", "pl_rt"):
+            if c in pos:
+                pos[c] = pos[c].map(_signed)
+        return pos[pos["poss_qty"] > 0] if "poss_qty" in pos else pos
+
+    def buy_us(self, code: str, qty: int, exch: str, price: float | None = None, order_type: str = "30") -> str:
+        """order_type 기본 30 (LOC, 종가지정가). price 는 LOC 의 상한/하한 지정가 — 종가가 이 범위 안이면 종가로 체결된다."""
+        return self._order_us("ust20000", code, qty, exch, price, order_type)
+
+    def sell_us(self, code: str, qty: int, exch: str, price: float | None = None, order_type: str = "03") -> str:
+        """order_type 기본 03 (시장가). 개장 직후 매도에 쓴다."""
+        return self._order_us("ust20001", code, qty, exch, price, order_type)
+
+    def _order_us(self, api_id: str, code: str, qty: int, exch: str, price: float | None, order_type: str) -> str:
+        body = {"stex_tp": exch, "stk_cd": code, "ord_qty": str(int(qty)), "trde_tp": order_type,
+                "ord_uv": (f"{price:.2f}" if price is not None else ""), "stop_pric": ""}
+        p = self.call(api_id, "/api/us/ordr", body)
+        return str(p.body.get("ord_no", ""))
+
+    def cancel_us(self, orig_ord_no: str, code: str, exch: str) -> str:
+        p = self.call("ust20002", "/api/us/ordr", {"orig_ord_no": orig_ord_no, "stex_tp": exch, "stk_cd": code})
+        return str(p.body.get("ord_no", ""))
+
 def _code(v: Any) -> int | None:
     if v is None or isinstance(v, bool):
         return None
@@ -333,3 +410,37 @@ def _chart_frame(rows: list[dict], tcol: str, fmt: str) -> pd.DataFrame:
     out.index.name = "time"
     out = out[~out.index.duplicated(keep="first")].sort_index()
     return out
+
+
+def _us_chart_frame(rows: list[dict]) -> pd.DataFrame:
+    if not rows:
+        return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+    df = pd.DataFrame(rows)
+    out = pd.DataFrame({
+        "open": df["open_pric"].map(_num), "high": df["high_pric"].map(_num),
+        "low": df["low_pric"].map(_num), "close": df["cur_prc"].map(_num),
+        "volume": df["acc_trde_qty"].map(_num) if "acc_trde_qty" in df else float("nan"),
+    })
+    out.index = pd.to_datetime(df["dt"].astype(str).str[:8], format="%Y%m%d")
+    out.index.name = "date"
+    out = out[~out.index.duplicated(keep="first")].sort_index()
+    return out
+
+
+def _us_rank_frame(rows: list[dict]) -> pd.DataFrame:
+    if not rows:
+        return pd.DataFrame(columns=["name", "stex_tp", "price", "chg", "volume"])
+    df = pd.DataFrame(rows)
+    out = pd.DataFrame({
+        "name": df.get("stk_nm", df.get("stk_enm", "")),
+        "stex_tp": df.get("stex_tp", ""),
+        "price": df["cur_prc"].map(_num),
+        "chg": df["flu_rt"].map(_signed) / 100.0 if "flu_rt" in df else float("nan"),
+        "volume": df["acc_trde_qty"].map(_num) if "acc_trde_qty" in df else float("nan"),
+    })
+    if "sdnin_rt" in df:
+        out["surge_rt"] = df["sdnin_rt"].map(_signed)
+    out.index = df["stk_cd"].astype(str)
+    out.index.name = "code"
+    return out[~out.index.duplicated(keep="first")]
+
