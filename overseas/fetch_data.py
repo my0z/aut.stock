@@ -45,8 +45,8 @@ def main() -> None:
         if path.exists():
             continue
         try:
-            df = client.us_daily_chart(code, exch=exch, start=start, max_pages=15)
-            df = df[df.index >= pd.Timestamp(start)]
+            df = client.us_daily_chart(code, exch=exch, since=start, max_pages=40)
+            df = df[df.index >= pd.Timestamp(start)]  # 페이징이 과거로 며칠 더 갈 수 있어 안전하게 자른다
             if df.empty:
                 fail += 1
                 print(f"[{i}/{n}] {code} 데이터 없음", file=sys.stderr)
