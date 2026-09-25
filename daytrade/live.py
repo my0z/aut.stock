@@ -140,9 +140,13 @@ def cmd_buy(client: KiwoomClient, a) -> None:
         })
         n += 1
     log.info("매수 %d 종목 기록 (%s)", n, "실주문" if a.real else "페이퍼")
-    head = f"[daytrade] {now:%m/%d} {'실주문' if a.real else '페이퍼'} 갭 하락 매수 {n}종목 (종목당 {per/10000:.0f}만원)"
-    body = "\n".join(f"{r['name']} {r['exp_price']:,.0f} 갭{r['gap']*100:+.1f}%" for _, r in picks.iterrows())
-    kakao(head + "\n" + body)
+    kakao(buy_message(now, picks))
+
+
+def buy_message(now: datetime, picks: pd.DataFrame) -> str:
+    """카톡용 매수 목록. 갭 큰 순으로 한 줄에 '종목명 예상체결가'. 다른 문구는 넣지 않는다."""
+    lines = [f"{r['name']} {r['exp_price']:.0f}" for _, r in picks.iterrows()]
+    return f"[daytrade] {now:%m/%d} 매수\n" + "\n".join(lines)
 
 
 def cmd_sell(client: KiwoomClient, a) -> None:
@@ -168,7 +172,7 @@ def cmd_sell(client: KiwoomClient, a) -> None:
                       "name": r.stk_nm, "side": "sell", "qty": qty, "price": r.cur_prc, "prev_close": "", "gap": "",
                       "liq20": "", "ord_no": ord_no})
         n += 1
-    kakao(f"[daytrade] {now:%m/%d} 종가 매도 주문 {n}종목")
+    log.info("종가 매도 주문 %d 종목", n)
 
 
 def cmd_eval(client: KiwoomClient, a) -> None:
@@ -206,6 +210,8 @@ def cmd_eval(client: KiwoomClient, a) -> None:
     daily = allp.groupby("date")["ret"].mean()
     log.info("오늘 %d 종목 평균 %+.2f%% / 누적 %d 일 일평균 %+.2f%%", len(done), done["ret"].mean() * 100, len(daily), daily.mean() * 100)
     print(done[["code", "name", "price", "exit", "ret"]].to_string())
+    if not a.kakao_result:
+        return
     best = done.nlargest(3, "ret")
     worst = done.nsmallest(3, "ret")
     kakao(f"[daytrade] {now:%m/%d} 결과 {len(done)}종목 평균 {done['ret'].mean()*100:+.2f}% 승률 {(done['ret']>0).mean()*100:.0f}%\n"
@@ -224,6 +230,7 @@ def main() -> None:
     ap.add_argument("--capital", type=float, default=0.0)
     ap.add_argument("--cost-bps", type=float, default=18.0)
     ap.add_argument("--dump", action="store_true", help="키움 응답 원본 첫 행 출력")
+    ap.add_argument("--kakao-result", action="store_true", help="eval 결과도 카톡으로 보낸다 (기본은 매수 목록만)")
     ap.add_argument("--mode-env", dest="kmode")
     a = ap.parse_args()
     try:
