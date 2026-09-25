@@ -110,10 +110,12 @@ def cmd_buy(client: KiwoomClient, a) -> None:
     per = capital / a.top
     log.info("자본 %.0f 원 / 종목당 %.0f 원 / 후보 %d 종목 (%s)", capital, per, len(picks), "실주문" if a.real else "페이퍼")
     print(picks[["name", "price", "chg", "net_i", "net_f"]].to_string())
+    to_buy: list[tuple[str, str, float, int]] = []  # (종목명 코드 가격 수량) 카톡용
     for code, r in picks.iterrows():
         qty = int(math.floor(per / r["price"]))
         if qty <= 0:
             continue
+        to_buy.append((r["name"], code, float(r["price"]), qty))
         ord_no = ""
         if a.real:
             try:
@@ -129,10 +131,17 @@ def cmd_buy(client: KiwoomClient, a) -> None:
     log.info("매수 %d 종목 기록", len(picks))
     counts = _record_variants(flows, now, a)
     log.info("변형 기록: %s", counts)
-    head = f"[aut.stock] {now:%m/%d} {'실주문' if a.real else '페이퍼'} 매수 {len(picks)}종목 (종목당 {per/10000:.0f}만원)"
-    body = "\n".join(f"{r['name']} {r['price']:,.0f} {r['chg']*100:+.1f}%" for _, r in picks.iterrows())
-    tail = "변형 후보: " + " ".join(f"{k}{v}" for k, v in counts.items())
-    kakao(head + "\n" + body + "\n" + tail)
+    kakao(buy_message(now, to_buy, a.real))
+
+
+def buy_message(now: datetime, to_buy: list[tuple[str, str, float, int]], real: bool) -> str:
+    """카톡 매수 알림. 살 종목만 번호 종목명 코드 가격 수량으로. 변형 후보는 대시보드에만 둔다."""
+    total = sum(p * q for _, _, p, q in to_buy)
+    lines = [f"[aut.stock] {now:%m/%d} {'실주문' if real else '매수 대상'} {len(to_buy)}종목",
+             "오늘 종가 매수 -> 내일 시가 매도"]
+    lines += [f"{i}. {n}({c}) {p:,.0f}원 x {q}주" for i, (n, c, p, q) in enumerate(to_buy, 1)]
+    lines.append(f"합계 약 {total/10000:,.0f}만원")
+    return "\n".join(lines)
 
 
 def cmd_sell(client: KiwoomClient, a) -> None:
