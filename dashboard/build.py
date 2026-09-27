@@ -25,7 +25,8 @@ def _read(name: str) -> pd.DataFrame:
 
 def _pct(v) -> str:
     try:
-        return f"{float(v)*100:+.2f}%"
+        f = float(v)
+        return "-" if pd.isna(f) else f"{f*100:+.2f}%"
     except (TypeError, ValueError):
         return "-"
 
@@ -51,12 +52,45 @@ def _table(df: pd.DataFrame, cols: dict[str, str], fmt: dict | None = None, cls:
     return f"<table class='{cls}'><thead><tr>{head}</tr></thead><tbody>{''.join(rows)}</tbody></table>"
 
 
+def _fill_chg2(paper: pd.DataFrame, panel_path: Path) -> pd.DataFrame:
+    """chg2 (전전일 종가 대비) 가 비어 있는 행을 패널로 채운다. 전일 종가가 0.5% 안에서 맞을 때만."""
+    if paper.empty:
+        return paper
+    paper = paper.copy()
+    if "chg2" not in paper:
+        paper["chg2"] = float("nan")
+    paper["chg2"] = pd.to_numeric(paper["chg2"], errors="coerce")
+    miss = paper["chg2"].isna()
+    if not miss.any() or not panel_path.exists():
+        return paper
+    try:
+        C = pd.read_parquet(panel_path, columns=["close"])["close"].unstack("ticker").sort_index()
+    except Exception:  # noqa: BLE001
+        return paper
+    for i, r in paper[miss].iterrows():
+        try:
+            code, price, chg = r["code"], float(r["price"]), float(r["chg"])
+            if code not in C:
+                continue
+            hist = C[code][C.index < pd.Timestamp(r["date"])].dropna()
+            if len(hist) < 2:
+                continue
+            prev, before = float(hist.iloc[-1]), float(hist.iloc[-2])
+            if prev > 0 and before > 0 and abs(prev / (price / (1 + chg)) - 1) <= 0.005:
+                paper.at[i, "chg2"] = price / before - 1
+        except (TypeError, ValueError):
+            continue
+    return paper
+
+
 def build() -> Path:
     paper = _read("overnight_paper.csv")
     if not paper.empty:
         if "variant" not in paper:
             paper["variant"] = "base"
         paper["variant"] = paper["variant"].fillna("base")
+    panel = ROOT / "data" / "panel.parquet"
+    paper = _fill_chg2(paper, panel)
     allpaper = paper
     paper = paper[paper["variant"] == "base"] if not paper.empty else paper
     live = _read("overnight_log.csv")
@@ -98,8 +132,8 @@ def build() -> Path:
             rows = paper[paper["date"] == day].copy()
             evaluated = "exit" in rows and rows["exit"].notna().any()
             parts.append(f"<h2>{'결과' if evaluated else '후보'} {html.escape(str(day))}</h2>")
-            cols = {"name": "종목", "code": "코드", "price": "매수가", "chg": "당일등락", "net_i": "기관(백만)", "net_f": "외인(백만)"}
-            fmt = {"chg": _pct, "price": lambda v: f"{float(v):,.0f}", "net_i": lambda v: f"{float(v):,.0f}", "net_f": lambda v: f"{float(v):,.0f}"}
+            cols = {"name": "종목", "code": "코드", "price": "매수가", "chg": "전일대비", "chg2": "전전일대비", "net_i": "기관(백만)", "net_f": "외인(백만)"}
+            fmt = {"chg": _pct, "chg2": _pct, "price": lambda v: f"{float(v):,.0f}", "net_i": lambda v: f"{float(v):,.0f}", "net_f": lambda v: f"{float(v):,.0f}"}
             if evaluated:
                 cols.update({"exit": "익일시가", "ret": "수익률"})
                 fmt.update({"exit": lambda v: f"{float(v):,.0f}" if pd.notna(v) else "-", "ret": _pct})
@@ -127,7 +161,6 @@ def build() -> Path:
                                                           {"avg": _pct, "cum": _pct, "win": lambda v: f"{float(v)*100:.0f}%"}))
 
     # KRX 확정 데이터와 잠정 선정 비교
-    panel = ROOT / "data" / "panel.parquet"
     if panel.exists() and not paper.empty:
         try:
             pn = pd.read_parquet(panel)
