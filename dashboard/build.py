@@ -150,8 +150,13 @@ def _fill_volume(paper: pd.DataFrame, panel_path: Path) -> pd.DataFrame:
         except Exception:  # noqa: BLE001
             vol = None
         if vol is not None:
-            key = pd.MultiIndex.from_arrays([pd.to_datetime(paper.loc[miss, "date"]), paper.loc[miss, "code"]])
-            paper.loc[miss, "volume"] = vol.reindex(key).values
+            # pandas 버전마다 날짜 단위와 문자열 타입이 달라 MultiIndex 매칭이 조용히 빗나간다. 문자열 키로 맞춘다
+            vd = vol.reset_index()
+            vd.columns = ["date", "ticker", "volume"]
+            lut = dict(zip(pd.to_datetime(vd["date"]).dt.strftime("%Y-%m-%d") + "|" + vd["ticker"].astype(str).str.zfill(6), vd["volume"]))
+            keys = pd.to_datetime(paper.loc[miss, "date"]).dt.strftime("%Y-%m-%d") + "|" + paper.loc[miss, "code"].astype(str).str.zfill(6)
+            paper.loc[miss, "volume"] = [lut.get(k, float("nan")) for k in keys]
+            print(f"거래량 채움 {paper.loc[miss, 'volume'].notna().sum()}/{int(miss.sum())} 행 (패널)")
     net = (pd.to_numeric(paper.get("net_i"), errors="coerce") + pd.to_numeric(paper.get("net_f"), errors="coerce")) * 1e6
     calc = net / (paper["volume"] * pd.to_numeric(paper["price"], errors="coerce"))
     paper["share"] = paper["share"].fillna(calc.where(paper["volume"] > 0))
