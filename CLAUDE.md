@@ -1,6 +1,7 @@
 # aut.stock
 
 한국 주식 자동매매 연구/운용 저장소. 답변은 한국어. 쉼표 없이 쓴다. 코드 생성 전 `date` 로 시간 확인.
+사용자에게 주는 서버 명령은 `&&` 로 이어 최대한 한 줄로 줄이고 코드블록 하나에 한 줄만 넣는다 (폰에서 복사하기 쉽게).
 
 ## 데이터 (data/)
 - `panel.parquet` KRX 일봉+수급 패널. index (date ticker) columns open close inst foreign. 2023-09-20 ~ 최근 (서버가 매일 16:40 갱신 후 `deploy/push_panel.sh` 로 이 브랜치에 자동 커밋. 작업 전 `git pull` 하면 최신). 코스피+코스닥 약 2,760 종목. inst/foreign 은 기관합계/외국인합계 순매수 금액 (원)
