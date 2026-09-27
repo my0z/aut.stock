@@ -91,7 +91,11 @@ def _table2(df: pd.DataFrame, line1: dict[str, str], line2: dict[str, str], fmt:
         code = str(r.get("code", ""))
         hot = " hot" if r.get("_star") is True else ""
         attr = f" class='pick{hot}' data-code='{html.escape(code)}'" if code.isdigit() else ""
-        bodies.append(f"<tbody{attr}><tr>" + "".join(_cell(r, c, fmt) for c in k1) + "</tr>"
+        cells = [_cell(r, c, fmt) for c in k1]
+        color = r.get("_color")
+        if isinstance(color, str) and color and k1 and k1[0] == "name":  # 두 날짜에 모두 있는 종목은 이름에 같은 색 배지
+            cells[0] = f"<td><span class='same' style='background:{color}'>{html.escape(str(r.get('name', '')))}</span></td>"
+        bodies.append(f"<tbody{attr}><tr>" + "".join(cells) + "</tr>"
                       "<tr class='l2'>" + "".join(_cell(r, c, fmt) for c in k2) + "</tr></tbody>")
     return f"<table class='two'>{head}{''.join(bodies)}</table>"
 
@@ -214,8 +218,13 @@ def build() -> Path:
     # 최근 후보 (오늘 또는 마지막 매수일)
     if not paper.empty:
         days = sorted(paper["date"].unique(), reverse=True)[:2]  # 오늘 후보 + 직전일 결과
+        # 두 날짜 목록에 모두 있는 종목: 종목마다 다른 색. 흰 글씨가 잘 보이는 진한 색만 쓴다
+        same_colors = ["#e03131", "#1971c2", "#2f9e44", "#f08c00", "#7048e8", "#0c8599", "#c2255c", "#5c940d", "#9c36b5", "#364fc7", "#d9480f", "#087f5b"]
+        common = sorted(set.intersection(*[set(paper.loc[paper["date"] == d, "code"]) for d in days])) if len(days) == 2 else []
+        color_of = {c: same_colors[i % len(same_colors)] for i, c in enumerate(common)}
         for day in days:
             rows = _mark_star(paper[paper["date"] == day].copy())
+            rows["_color"] = rows["code"].map(color_of)
             evaluated = "exit" in rows and rows["exit"].notna().any()
             parts.append(f"<h2>{'결과' if evaluated else '후보'} {html.escape(str(day))}</h2>")
             line1 = {"name": "종목", "price": "매수가", "chg": "전일비", "chg2": "전전일비"}
@@ -235,6 +244,8 @@ def build() -> Path:
             if rows["_star"].any():
                 legend += ("<br><span class='hotkey'>색칠</span> 내일 시가 상승 가능성 높은 종목. 순매수가 거래대금에서 차지하는 비중이 낮은 쪽 40%. "
                            "3년 백테스트 익일 시가 일평균 +0.36% (전체 +0.20%) 비용 18bp 후")
+            if color_of:
+                legend += f"<br><span class='same' style='background:{same_colors[0]}'>색 배지</span> {html.escape(days[1])} 와 {html.escape(days[0])} 두 날 모두 후보인 종목 {len(color_of)}개. 같은 종목은 같은 색"
             parts.append(f"<p class='muted'>{legend}</p>")
             parts.append(_table2(rows, line1, line2, fmt))
 
@@ -299,7 +310,7 @@ th,td{{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right}}th:
 thead th{{color:var(--muted);font-weight:500}}
 body>p:first-child{{margin-top:0}}
 .pick{{cursor:pointer}}.pick:active{{background:var(--card)}}
-tbody.hot td{{background:var(--hot)}}.hotkey{{background:var(--hot);color:var(--fg);padding:0 4px;border-radius:3px}}
+tbody.hot td{{background:var(--hot)}}.same{{color:#fff;padding:1px 6px;border-radius:4px;font-weight:600}}.hotkey{{background:var(--hot);color:var(--fg);padding:0 4px;border-radius:3px}}
 table.two{{white-space:normal;display:table}}table.two td,table.two th{{padding:4px 6px}}
 table.two tr:not(.l2) td{{border-bottom:none;padding-top:8px}}table.two tr.l2 td{{font-size:12px;color:var(--muted);padding-bottom:8px}}
 table.two thead tr:not(.l2) th{{border-bottom:none}}table.two tr.l2 td.up{{color:var(--up)}}table.two tr.l2 td.down{{color:var(--down)}}
