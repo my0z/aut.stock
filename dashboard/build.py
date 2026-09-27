@@ -48,7 +48,9 @@ def _table(df: pd.DataFrame, cols: dict[str, str], fmt: dict | None = None, cls:
             elif c in fmt and s.startswith("-"):
                 klass = " class='down'"
             tds.append(f"<td{klass}>{html.escape(s)}</td>")
-        rows.append("<tr>" + "".join(tds) + "</tr>")
+        code = str(r.get("code", "")) if "code" in cols else ""
+        attr = f" class='pick' data-code='{html.escape(code)}'" if code.isdigit() else ""
+        rows.append(f"<tr{attr}>" + "".join(tds) + "</tr>")
     return f"<table class='{cls}'><thead><tr>{head}</tr></thead><tbody>{''.join(rows)}</tbody></table>"
 
 
@@ -202,10 +204,32 @@ h1{{font-size:20px;margin:0 0 4px}}h2{{font-size:17px;margin:24px 0 8px}}h3{{fon
 table{{border-collapse:collapse;width:100%;font-size:13px;white-space:nowrap;display:block;overflow-x:auto}}
 th,td{{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right}}th:first-child,td:first-child{{text-align:left}}
 thead th{{color:var(--muted);font-weight:500}}
+tr.pick{{cursor:pointer}}tr.pick:active{{background:var(--card)}}
+#toast{{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none}}
+#toast.on{{opacity:.92}}
 </style></head><body>
 <h1>aut.stock 오버나이트 수급</h1>
 <p class="muted">당일 기관+외인 동시 순매수 상위 30 종가 매수 → 익일 시가 매도</p>
+<p class="muted">종목 줄을 누르면 종목코드가 복사되고 영웅문S#이 열립니다 (안드로이드)</p>
 {body}
+<div id="toast"></div>
+<script>
+// 키움 영웅문S# 안드로이드 패키지. 설치 안 돼 있으면 플레이스토어로 간다
+const HERO_PKG = "com.kiwoom.heromts";
+function toast(t) {{ const e = document.getElementById("toast"); e.textContent = t; e.classList.add("on"); setTimeout(() => e.classList.remove("on"), 1800); }}
+async function copy(t) {{
+  try {{ await navigator.clipboard.writeText(t); return true; }} catch (_) {{}}
+  const a = document.createElement("textarea"); a.value = t; a.style.position = "fixed"; a.style.opacity = "0";
+  document.body.appendChild(a); a.select(); let ok = false; try {{ ok = document.execCommand("copy"); }} catch (_) {{}}
+  a.remove(); return ok;
+}}
+document.addEventListener("click", async (ev) => {{
+  const tr = ev.target.closest("tr.pick"); if (!tr) return;
+  const code = tr.dataset.code; const ok = await copy(code);
+  toast(ok ? code + " 복사됨" : "복사 실패 " + code);
+  if (/Android/i.test(navigator.userAgent)) setTimeout(() => {{ location.href = "intent://#Intent;package=" + HERO_PKG + ";end"; }}, 300);
+}});
+</script>
 </body></html>"""
     OUT.write_text(page, encoding="utf-8")
     return OUT
