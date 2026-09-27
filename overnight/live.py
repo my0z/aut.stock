@@ -129,8 +129,21 @@ def _record_variants(flows: pd.DataFrame, now: datetime, a) -> dict[str, int]:
     return counts
 
 
+def market_open_today(client: KiwoomClient, now: datetime) -> bool:
+    """오늘 일봉이 있으면 개장일. 휴장일에는 키움이 직전 거래일 수급을 그대로 돌려줘서 가짜 기록이 생긴다."""
+    try:
+        d = client.daily_chart("005930", base_dt=now.strftime("%Y%m%d"), max_pages=1)
+        return not d.empty and d.index[-1].strftime("%Y%m%d") == now.strftime("%Y%m%d")
+    except Exception as e:  # noqa: BLE001
+        log.warning("개장 여부 확인 실패. 개장으로 보고 진행: %s", e)
+        return True
+
+
 def cmd_buy(client: KiwoomClient, a) -> None:
     now = datetime.now(KST)
+    if not market_open_today(client, now):
+        log.warning("오늘 휴장. 매수 건너뜀")
+        return
     flows = fetch_flows(client)
     picks = select(client, a.top, a.min_chg, a.min_price, flows)
     if picks.empty:
