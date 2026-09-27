@@ -186,6 +186,8 @@ def build() -> Path:
                     line2["ret_0930"] = "09:30매도"
                     fmt["ret_0930"] = _pct
                 rows = rows.sort_values("ret", ascending=False)
+            elif "volume" in rows:  # 후보는 거래량 많은 순
+                rows = rows.assign(_v=pd.to_numeric(rows["volume"], errors="coerce")).sort_values("_v", ascending=False, na_position="last")
             parts.append("<p class='muted'>윗줄 매수가 전일비 전전일비 / 아랫줄 기관 외인 순매수 (백만원) 거래량 (매수 시점 누적)</p>")
             parts.append(_table2(rows, line1, line2, fmt))
 
