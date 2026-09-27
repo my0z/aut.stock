@@ -29,6 +29,7 @@ from .variants import BASE, VARIANTS
 log = logging.getLogger("overnight")
 RESULTS = Path(__file__).resolve().parent.parent / "results"
 PAPER = RESULTS / "overnight_paper.csv"
+PANEL = RESULTS.parent / "data" / "panel.parquet"
 LOG = RESULTS / "overnight_log.csv"
 
 
@@ -110,12 +111,13 @@ def cmd_buy(client: KiwoomClient, a) -> None:
     per = capital / a.top
     log.info("자본 %.0f 원 / 종목당 %.0f 원 / 후보 %d 종목 (%s)", capital, per, len(picks), "실주문" if a.real else "페이퍼")
     print(picks[["name", "price", "chg", "net_i", "net_f"]].to_string())
-    to_buy: list[tuple[str, str, float, int]] = []  # (종목명 코드 가격 수량) 카톡용
+    chg2 = two_day_change(picks)
+    to_buy: list[tuple[str, str, float, int, float, float | None]] = []  # (종목명 코드 가격 수량 전일비 전전일비) 카톡용
     for code, r in picks.iterrows():
         qty = int(math.floor(per / r["price"]))
         if qty <= 0:
             continue
-        to_buy.append((r["name"], code, float(r["price"]), qty))
+        to_buy.append((r["name"], code, float(r["price"]), qty, float(r["chg"]), chg2.get(code)))
         ord_no = ""
         if a.real:
             try:
@@ -127,6 +129,7 @@ def cmd_buy(client: KiwoomClient, a) -> None:
             "date": now.strftime("%Y-%m-%d"), "time": now.strftime("%H:%M:%S"), "code": code, "name": r["name"],
             "side": "buy", "qty": qty, "price": r["price"], "chg": round(r["chg"], 4),
             "net_i": r["net_i"], "net_f": r["net_f"], "ord_no": ord_no, "variant": BASE,
+            "chg2": round(chg2[code], 4) if code in chg2 else "",
         })
     log.info("매수 %d 종목 기록", len(picks))
     counts = _record_variants(flows, now, a)
@@ -134,12 +137,52 @@ def cmd_buy(client: KiwoomClient, a) -> None:
     kakao(buy_message(now, to_buy, a.real))
 
 
-def buy_message(now: datetime, to_buy: list[tuple[str, str, float, int]], real: bool) -> str:
-    """카톡 매수 알림. 살 종목만 번호 종목명 코드 가격 수량으로. 변형 후보는 대시보드에만 둔다."""
-    total = sum(p * q for _, _, p, q in to_buy)
+def two_day_change(picks: pd.DataFrame, panel_path: Path = PANEL) -> dict[str, float]:
+    """전전일 종가 대비 현재가 등락률. {코드: 비율}. 계산 못 하면 빠진다.
+
+    전일 종가는 현재가와 당일 등락률로 역산한다 (price / (1 + chg)). 패널의 마지막 종가가 그 값과
+    0.5% 안에서 맞으면 패널이 전일까지 갱신된 것이므로 그 직전 행을 전전일 종가로 쓴다.
+    패널이 하루 밀려 있거나 종목이 없으면 계산하지 않는다 (틀린 값을 보내지 않기 위해).
+    """
+    out: dict[str, float] = {}
+    if picks.empty or not panel_path.exists():
+        return out
+    try:
+        close = pd.read_parquet(panel_path, columns=["close"])["close"]
+    except Exception as e:  # noqa: BLE001
+        log.warning("패널 읽기 실패: %s", e)
+        return out
+    codes = set(picks.index) & set(close.index.get_level_values("ticker"))
+    if not codes:
+        return out
+    sub = close[close.index.get_level_values("ticker").isin(codes)]
+    for code, s_ in sub.groupby(level="ticker"):
+        hist = s_.droplevel("ticker").sort_index().dropna()
+        if len(hist) < 2:
+            continue
+        r = picks.loc[code]
+        prev = float(r["price"]) / (1 + float(r["chg"]))
+        last, before = float(hist.iloc[-1]), float(hist.iloc[-2])
+        if last > 0 and before > 0 and abs(last / prev - 1) <= 0.005:
+            out[code] = float(r["price"]) / before - 1
+    return out
+
+
+def buy_message(now: datetime, to_buy: list[tuple[str, str, float, int, float, float | None]], real: bool) -> str:
+    """카톡 매수 알림. 살 종목만 번호 종목명 코드 가격 수량 그리고 오른 폭 (전일 대비 / 전전일 대비).
+    변형 후보는 대시보드에만 둔다."""
+    total = sum(p * q for _, _, p, q, _, _ in to_buy)
     lines = [f"[aut.stock] {now:%m/%d} {'실주문' if real else '매수 대상'} {len(to_buy)}종목",
-             "오늘 종가 매수 -> 내일 시가 매도"]
-    lines += [f"{i}. {n}({c}) {p:,.0f}원 x {q}주" for i, (n, c, p, q) in enumerate(to_buy, 1)]
+             "오늘 종가 매수 -> 내일 시가 매도",
+             "오른 폭: 전일 대비 / 전전일 대비"]
+
+    def rise(v: float | None) -> str:
+        if v is None:
+            return "-"
+        return f"+{v*100:.1f}%" if v > 0 else "오름 없음"
+
+    lines += [f"{i}. {n}({c}) {p:,.0f}원 x {q}주 | {rise(c1)} / {rise(c2)}"
+              for i, (n, c, p, q, c1, c2) in enumerate(to_buy, 1)]
     lines.append(f"합계 약 {total/10000:,.0f}만원")
     return "\n".join(lines)
 
