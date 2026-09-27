@@ -146,12 +146,14 @@ def cmd_buy(client: KiwoomClient, a) -> None:
     print(picks[["name", "price", "chg", "net_i", "net_f"]].to_string())
     chg2 = two_day_change(picks)
     vol = fetch_volumes(client, list(picks.index))
-    to_buy: list[tuple[str, str, float, int, float, float | None]] = []  # (종목명 코드 가격 수량 전일비 전전일비) 카톡용
+    share = net_share(picks, vol)
+    star = star_codes(share)
+    to_buy: list[tuple[str, str, float, int, float, float | None, bool]] = []  # (종목명 코드 가격 수량 전일비 전전일비 별표) 카톡용
     for code, r in picks.iterrows():
         qty = int(math.floor(per / r["price"]))
         if qty <= 0:
             continue
-        to_buy.append((r["name"], code, float(r["price"]), qty, float(r["chg"]), chg2.get(code)))
+        to_buy.append((r["name"], code, float(r["price"]), qty, float(r["chg"]), chg2.get(code), code in star))
         ord_no = ""
         if a.real:
             try:
@@ -165,10 +167,12 @@ def cmd_buy(client: KiwoomClient, a) -> None:
             "net_i": r["net_i"], "net_f": r["net_f"], "ord_no": ord_no, "variant": BASE,
             "chg2": round(chg2[code], 4) if code in chg2 else "",
             "volume": int(vol[code]) if code in vol else "",
+            "share": round(share[code], 4) if code in share else "",
         })
     log.info("매수 %d 종목 기록", len(picks))
     counts = _record_variants(flows, now, a)
     log.info("변형 기록: %s", counts)
+    to_buy.sort(key=lambda t: (not t[6], -vol.get(t[1], 0)))  # 별표 먼저 그다음 거래량 순
     kakao(buy_message(now, to_buy, a.real))
 
 
@@ -203,21 +207,42 @@ def two_day_change(picks: pd.DataFrame, panel_path: Path = PANEL) -> dict[str, f
     return out
 
 
-def buy_message(now: datetime, to_buy: list[tuple[str, str, float, int, float, float | None]], real: bool) -> str:
+def net_share(picks: pd.DataFrame, vol: dict[str, float]) -> dict[str, float]:
+    """기관+외인 순매수 금액이 거래대금에서 차지하는 비중. 순매수 단위 백만원 / 거래대금 = 거래량 x 현재가."""
+    out = {}
+    for code, r in picks.iterrows():
+        v = vol.get(code)
+        if v and r["price"] > 0:
+            out[code] = float(r["net_i"] + r["net_f"]) * 1e6 / (v * float(r["price"]))
+    return out
+
+
+def star_codes(share: dict[str, float], frac: float = 0.4) -> set[str]:
+    """비중이 낮은 쪽 40% 에 별표. 3년 백테스트에서 익일 시가 수익이 가장 좋았던 구간
+    (비용 18bp 후 일평균 +0.36% vs 전체 +0.20%. 2023~2026 모든 해에서 우위)."""
+    if not share:
+        return set()
+    rk = pd.Series(share).rank(pct=True)
+    return set(rk[rk <= frac].index)
+
+
+def buy_message(now: datetime, to_buy: list[tuple[str, str, float, int, float, float | None, bool]], real: bool) -> str:
     """카톡 매수 알림. 살 종목만 번호 종목명 코드 가격 수량 그리고 오른 폭 (전일 대비 / 전전일 대비).
     변형 후보는 대시보드에만 둔다."""
-    total = sum(p * q for _, _, p, q, _, _ in to_buy)
+    total = sum(t[2] * t[3] for t in to_buy)
     lines = [f"[aut.stock] {now:%m/%d} {'실주문' if real else '매수 대상'} {len(to_buy)}종목",
              "오늘 종가 매수 -> 내일 시가 매도",
              "오른 폭: 전일 대비 / 전전일 대비"]
+    if any(t[6] for t in to_buy):
+        lines.append("★ 내일 시가 상승 가능성 높은 종목 (위에서부터)")
 
     def rise(v: float | None) -> str:
         if v is None:
             return "-"
         return f"+{v*100:.1f}%" if v > 0 else "오름 없음"
 
-    lines += [f"{i}. {n}({c}) {p:,.0f}원 x {q}주 | {rise(c1)} / {rise(c2)}"
-              for i, (n, c, p, q, c1, c2) in enumerate(to_buy, 1)]
+    lines += [f"{i}. {'★' if st else ''}{n}({c}) {p:,.0f}원 x {q}주 | {rise(c1)} / {rise(c2)}"
+              for i, (n, c, p, q, c1, c2, st) in enumerate(to_buy, 1)]
     lines.append(f"합계 약 {total/10000:,.0f}만원")
     return "\n".join(lines)
 

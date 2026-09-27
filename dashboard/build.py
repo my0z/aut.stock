@@ -89,10 +89,20 @@ def _table2(df: pd.DataFrame, line1: dict[str, str], line2: dict[str, str], fmt:
     bodies = []
     for _, r in df.iterrows():
         code = str(r.get("code", ""))
-        attr = f" class='pick' data-code='{html.escape(code)}'" if code.isdigit() else ""
+        hot = " hot" if r.get("_star") is True else ""
+        attr = f" class='pick{hot}' data-code='{html.escape(code)}'" if code.isdigit() else ""
         bodies.append(f"<tbody{attr}><tr>" + "".join(_cell(r, c, fmt) for c in k1) + "</tr>"
                       "<tr class='l2'>" + "".join(_cell(r, c, fmt) for c in k2) + "</tr></tbody>")
     return f"<table class='two'>{head}{''.join(bodies)}</table>"
+
+
+def _mark_star(rows: pd.DataFrame, frac: float = 0.4) -> pd.DataFrame:
+    """overnight.live.star_codes 와 같은 기준. share (순매수/거래대금) 가 그날 후보 중 낮은 쪽 40% 면 _star."""
+    rows = rows.copy()
+    sh = pd.to_numeric(rows["share"], errors="coerce") if "share" in rows else pd.Series(float("nan"), index=rows.index)
+    rk = sh.rank(pct=True)
+    rows["_star"] = (rk <= frac).fillna(False).astype(bool)
+    return rows
 
 
 def _fill_chg2(paper: pd.DataFrame, panel_path: Path) -> pd.DataFrame:
@@ -153,6 +163,12 @@ def build() -> Path:
                 d0 = both.groupby("date")["ret"].mean(); d9 = both.groupby("date")["ret_0930"].mean()
                 alt = (f"<p class='muted'>같은 종목을 09:30 에 팔았다면: 일평균 {_pct(d9.mean())} (시가 매도 {_pct(d0.mean())}) "
                        f"{len(d9)}일 비교</p>")
+            if "share" in done:
+                sd = pd.concat([_mark_star(g) for _, g in done.groupby("date")])  # 날짜별로 따로 순위
+                st = sd[sd["_star"]]
+                if not st.empty:
+                    ds = st.groupby("date")["ret"].mean(); da = done[done["date"].isin(ds.index)].groupby("date")["ret"].mean()
+                    alt += (f"<p class='muted'>★ 종목만 샀다면: 일평균 {_pct(ds.mean())} (전체 {_pct(da.mean())}) {len(ds)}일 비교</p>")
             parts.append("<h2>페이퍼 누적</h2>" + alt)
             parts.append("<div class='cards'>"
                          f"<div class='card'><div class='k'>거래일</div><div class='v'>{len(daily)}</div></div>"
@@ -172,7 +188,7 @@ def build() -> Path:
     if not paper.empty:
         days = sorted(paper["date"].unique(), reverse=True)[:2]  # 오늘 후보 + 직전일 결과
         for day in days:
-            rows = paper[paper["date"] == day].copy()
+            rows = _mark_star(paper[paper["date"] == day].copy())
             evaluated = "exit" in rows and rows["exit"].notna().any()
             parts.append(f"<h2>{'결과' if evaluated else '후보'} {html.escape(str(day))}</h2>")
             line1 = {"name": "종목", "price": "매수가", "chg": "전일비", "chg2": "전전일비"}
@@ -186,9 +202,13 @@ def build() -> Path:
                     line2["ret_0930"] = "09:30매도"
                     fmt["ret_0930"] = _pct
                 rows = rows.sort_values("ret", ascending=False)
-            elif "volume" in rows:  # 후보는 거래량 많은 순
-                rows = rows.assign(_v=pd.to_numeric(rows["volume"], errors="coerce")).sort_values("_v", ascending=False, na_position="last")
-            parts.append("<p class='muted'>윗줄 매수가 전일비 전전일비 / 아랫줄 기관 외인 순매수 (백만원) 거래량 (매수 시점 누적)</p>")
+            else:  # 후보는 별표 먼저 그다음 거래량 많은 순
+                rows = rows.assign(_v=pd.to_numeric(rows.get("volume"), errors="coerce")).sort_values(["_star", "_v"], ascending=[False, False], na_position="last")
+            legend = "윗줄 매수가 전일비 전전일비 / 아랫줄 기관 외인 순매수 (백만원) 거래량 (매수 시점 누적)"
+            if rows["_star"].any():
+                legend += ("<br><span class='hotkey'>색칠</span> 내일 시가 상승 가능성 높은 종목. 순매수가 거래대금에서 차지하는 비중이 낮은 쪽 40%. "
+                           "3년 백테스트 익일 시가 일평균 +0.36% (전체 +0.20%) 비용 18bp 후")
+            parts.append(f"<p class='muted'>{legend}</p>")
             parts.append(_table2(rows, line1, line2, fmt))
 
     # 실주문 기록
@@ -240,8 +260,8 @@ def build() -> Path:
     page = f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>aut.stock</title>
 <style>
-:root{{--bg:#fff;--fg:#111;--muted:#777;--line:#e5e5e5;--up:#d1242f;--down:#1a5fd0;--card:#f6f6f6}}
-@media(prefers-color-scheme:dark){{:root{{--bg:#121212;--fg:#eee;--muted:#999;--line:#333;--card:#1e1e1e;--up:#ff6b6b;--down:#6ea8ff}}}}
+:root{{--bg:#fff;--fg:#111;--muted:#777;--line:#e5e5e5;--up:#d1242f;--down:#1a5fd0;--card:#f6f6f6;--hot:#fff4c2}}
+@media(prefers-color-scheme:dark){{:root{{--bg:#121212;--fg:#eee;--muted:#999;--line:#333;--card:#1e1e1e;--up:#ff6b6b;--down:#6ea8ff;--hot:#3a3312}}}}
 body{{margin:0;padding:16px;background:var(--bg);color:var(--fg);font:15px/1.5 -apple-system,system-ui,"Apple SD Gothic Neo","Malgun Gothic",sans-serif}}
 h1{{font-size:20px;margin:0 0 4px}}h2{{font-size:17px;margin:24px 0 8px}}h3{{font-size:15px;margin:16px 0 6px}}
 .muted{{color:var(--muted)}}.up{{color:var(--up)}}.down{{color:var(--down)}}
@@ -252,6 +272,7 @@ th,td{{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right}}th:
 thead th{{color:var(--muted);font-weight:500}}
 body>p:first-child{{margin-top:0}}
 .pick{{cursor:pointer}}.pick:active{{background:var(--card)}}
+tbody.hot td{{background:var(--hot)}}.hotkey{{background:var(--hot);color:var(--fg);padding:0 4px;border-radius:3px}}
 table.two{{white-space:normal;display:table}}table.two td,table.two th{{padding:4px 6px}}
 table.two tr:not(.l2) td{{border-bottom:none;padding-top:8px}}table.two tr.l2 td{{font-size:12px;color:var(--muted);padding-bottom:8px}}
 table.two thead tr:not(.l2) th{{border-bottom:none}}table.two tr.l2 td.up{{color:var(--up)}}table.two tr.l2 td.down{{color:var(--down)}}
