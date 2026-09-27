@@ -210,12 +210,12 @@ tr.pick{{cursor:pointer}}tr.pick:active{{background:var(--card)}}
 </style></head><body>
 <h1>aut.stock 오버나이트 수급</h1>
 <p class="muted">당일 기관+외인 동시 순매수 상위 30 종가 매수 → 익일 시가 매도</p>
-<p class="muted">종목 줄을 누르면 종목코드가 복사되고 영웅문S#이 열립니다 (안드로이드)</p>
+<p class="muted">종목 줄을 누르면 종목코드가 복사되고 영웅문S#이 열립니다</p>
 {body}
 <div id="toast"></div>
 <script>
-// 키움 영웅문S# 안드로이드 패키지
-const HERO_PKG = "com.kiwoom.heromts";
+// 영웅문S# 앱 스킴. zerozistocks 블로그에서 실기기로 검증된 값 (intent 패키지 호출은 플레이스토어로 빠짐)
+const HERO_URL = "heromts://heromtshost";
 function toast(t) {{ const e = document.getElementById("toast"); e.textContent = t; e.classList.add("on"); setTimeout(() => e.classList.remove("on"), 1800); }}
 async function copy(t) {{
   try {{ await navigator.clipboard.writeText(t); return true; }} catch (_) {{}}
@@ -227,9 +227,8 @@ document.addEventListener("click", async (ev) => {{
   const tr = ev.target.closest("tr.pick"); if (!tr) return;
   const code = tr.dataset.code; const ok = await copy(code);
   toast(ok ? code + " 복사됨" : "복사 실패 " + code);
-  if (!/Android/i.test(navigator.userAgent)) return;
-  const url = "intent://#Intent;package=" + HERO_PKG + ";end";
-  setTimeout(() => {{ location.href = url; }}, 300);
+  if (!/Android|iPhone|iPad/i.test(navigator.userAgent)) return;
+  setTimeout(() => {{ location.href = HERO_URL; }}, 300);
 }});
 </script>
 </body></html>"""
