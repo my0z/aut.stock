@@ -77,11 +77,17 @@ def _cell(r, c, fmt) -> str:
     return f"<td{klass}>{html.escape(s)}</td>"
 
 
-def _table2(df: pd.DataFrame, line1: dict[str, str], line2: dict[str, str], fmt: dict) -> str:
+def _tint(hex_color: str, alpha: float = 0.22) -> str:
+    h = hex_color.lstrip("#")
+    r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+    return f"rgba({r},{g},{b},{alpha})"
+
+
+def _table2(df: pd.DataFrame, line1: dict[str, str], line2: dict[str, str], fmt: dict, ncols: int = 5) -> str:
     """종목당 두 줄. 한 화면에 가로 스크롤 없이 보이게. 종목 묶음(tbody)을 누르면 코드 복사."""
     if df.empty:
         return "<p class='muted'>기록 없음</p>"
-    n = max(len(line1), len(line2))
+    n = max(len(line1), len(line2), ncols)  # 후보 표와 결과 표의 칸 위치를 맞추려고 칸 수를 고정
     k1 = list(line1) + [""] * (n - len(line1)); k2 = list(line2) + [""] * (n - len(line2))
     t1 = list(line1.values()) + [""] * (n - len(line1)); t2 = list(line2.values()) + [""] * (n - len(line2))
     head = ("<thead><tr>" + "".join(f"<th>{html.escape(t)}</th>" for t in t1) + "</tr>"
@@ -89,15 +95,21 @@ def _table2(df: pd.DataFrame, line1: dict[str, str], line2: dict[str, str], fmt:
     bodies = []
     for _, r in df.iterrows():
         code = str(r.get("code", ""))
-        hot = " hot" if r.get("_star") is True else ""
-        attr = f" class='pick{hot}' data-code='{html.escape(code)}'" if code.isdigit() else ""
-        cells = [_cell(r, c, fmt) for c in k1]
+        star = r.get("_star") is True
         color = r.get("_color")
-        if isinstance(color, str) and color and k1 and k1[0] == "name":  # 두 날짜에 모두 있는 종목은 이름에 같은 색 배지
-            cells[0] = f"<td><span class='same' style='background:{color}'>{html.escape(str(r.get('name', '')))}</span></td>"
+        same = isinstance(color, str) and bool(color)
+        hot = " hot" if star and not same else ""
+        style = f" style='--same:{_tint(color)};--sameline:{color}'" if same else ""
+        attr = f" class='pick{hot}{' same' if same else ''}' data-code='{html.escape(code)}'{style}" if code.isdigit() else ""
+        cells = [_cell(r, c, fmt) for c in k1]
+        if k1 and k1[0] == "name":
+            name = ("★" if star else "") + str(r.get("name", ""))
+            cells[0] = f"<td>{html.escape(name)}</td>"
         bodies.append(f"<tbody{attr}><tr>" + "".join(cells) + "</tr>"
                       "<tr class='l2'>" + "".join(_cell(r, c, fmt) for c in k2) + "</tr></tbody>")
-    return f"<table class='two'>{head}{''.join(bodies)}</table>"
+    widths = [25, 21] + [54 / (n - 2)] * (n - 2)  # 종목 / 매수가 (7자리 가격) / 나머지 등분
+    cols = "<colgroup>" + "".join(f"<col style='width:{w:.2f}%'>" for w in widths) + "</colgroup>"
+    return f"<table class='two'>{cols}{head}{''.join(bodies)}</table>"
 
 
 def _mark_star(rows: pd.DataFrame, frac: float = 0.4) -> pd.DataFrame:
@@ -244,8 +256,11 @@ def build() -> Path:
             if rows["_star"].any():
                 legend += ("<br><span class='hotkey'>색칠</span> 내일 시가 상승 가능성 높은 종목. 순매수가 거래대금에서 차지하는 비중이 낮은 쪽 40%. "
                            "3년 백테스트 익일 시가 일평균 +0.36% (전체 +0.20%) 비용 18bp 후")
+            if rows["_star"].any():
+                legend += "<br>★ 표시도 같은 뜻 (다른 색이 칠해진 칸에서도 보이게)"
             if color_of:
-                legend += f"<br><span class='same' style='background:{same_colors[0]}'>색 배지</span> {html.escape(days[1])} 와 {html.escape(days[0])} 두 날 모두 후보인 종목 {len(color_of)}개. 같은 종목은 같은 색"
+                legend += (f"<br><span class='samekey' style='background:{_tint(same_colors[0])};border-left:4px solid {same_colors[0]}'>색 칸</span> "
+                           f"{html.escape(days[1])} 와 {html.escape(days[0])} 두 날 모두 후보인 종목 {len(color_of)}개. 같은 종목은 같은 색")
             parts.append(f"<p class='muted'>{legend}</p>")
             parts.append(_table2(rows, line1, line2, fmt))
 
@@ -310,11 +325,13 @@ th,td{{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right}}th:
 thead th{{color:var(--muted);font-weight:500}}
 body>p:first-child{{margin-top:0}}
 .pick{{cursor:pointer}}.pick:active{{background:var(--card)}}
-tbody.hot td{{background:var(--hot)}}.same{{color:#fff;padding:1px 6px;border-radius:4px;font-weight:600}}.hotkey{{background:var(--hot);color:var(--fg);padding:0 4px;border-radius:3px}}
-table.two{{white-space:normal;display:table}}table.two td,table.two th{{padding:4px 6px}}
+tbody.hot td{{background:var(--hot)}}tbody.same td{{background:var(--same)}}tbody.same td:first-child{{box-shadow:inset 5px 0 0 var(--sameline)}}table.two td:first-child,table.two th:first-child{{padding-left:9px}}
+.samekey{{color:var(--fg);padding:0 4px;border-radius:3px}}
+table.two{{table-layout:fixed;width:100%}}table.two td,table.two th{{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}.hotkey{{background:var(--hot);color:var(--fg);padding:0 4px;border-radius:3px}}
+table.two{{white-space:normal;display:table}}table.two td,table.two th{{padding:4px 3px}}
 table.two tr:not(.l2) td{{border-bottom:none;padding-top:8px}}table.two tr.l2 td{{font-size:12px;color:var(--muted);padding-bottom:8px}}
 table.two thead tr:not(.l2) th{{border-bottom:none}}table.two tr.l2 td.up{{color:var(--up)}}table.two tr.l2 td.down{{color:var(--down)}}
-table.two tr:not(.l2) td:first-child{{font-weight:600;white-space:nowrap;max-width:7.5em;overflow:hidden;text-overflow:ellipsis}}
+table.two tr:not(.l2) td:first-child{{font-weight:600}}
 table.two th{{white-space:nowrap}}
 #toast{{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none}}
 #toast.on{{opacity:.92}}
