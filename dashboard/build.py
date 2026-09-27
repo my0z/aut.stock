@@ -248,6 +248,7 @@ h1{{font-size:20px;margin:0 0 4px}}h2{{font-size:17px;margin:24px 0 8px}}h3{{fon
 table{{border-collapse:collapse;width:100%;font-size:13px;white-space:nowrap;display:block;overflow-x:auto}}
 th,td{{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right}}th:first-child,td:first-child{{text-align:left}}
 thead th{{color:var(--muted);font-weight:500}}
+body>p:first-child{{margin-top:0}}
 .pick{{cursor:pointer}}.pick:active{{background:var(--card)}}
 table.two{{white-space:normal;display:table}}table.two td,table.two th{{padding:4px 6px}}
 table.two tr:not(.l2) td{{border-bottom:none;padding-top:8px}}table.two tr.l2 td{{font-size:12px;color:var(--muted);padding-bottom:8px}}
@@ -257,9 +258,6 @@ table.two th{{white-space:nowrap}}
 #toast{{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none}}
 #toast.on{{opacity:.92}}
 </style></head><body>
-<h1>aut.stock 오버나이트 수급</h1>
-<p class="muted">당일 기관+외인 동시 순매수 상위 30 종가 매수 → 익일 시가 매도</p>
-<p class="muted">종목 줄을 누르면 종목코드가 복사되고 영웅문S#이 열립니다</p>
 {body}
 <div id="toast"></div>
 <script>
