@@ -54,6 +54,47 @@ def _table(df: pd.DataFrame, cols: dict[str, str], fmt: dict | None = None, cls:
     return f"<table class='{cls}'><thead><tr>{head}</tr></thead><tbody>{''.join(rows)}</tbody></table>"
 
 
+def _vol(v) -> str:
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return "-"
+    if pd.isna(f):
+        return "-"
+    return f"{f/1e4:,.0f}만" if f >= 1e4 else f"{f:,.0f}"
+
+
+def _cell(r, c, fmt) -> str:
+    if not c:
+        return "<td></td>"
+    v = r.get(c, "")
+    s = fmt[c](v) if c in fmt else ("" if pd.isna(v) else str(v))
+    klass = ""
+    if c in fmt and s.startswith("+"):
+        klass = " class='up'"
+    elif c in fmt and s.startswith("-") and s != "-":
+        klass = " class='down'"
+    return f"<td{klass}>{html.escape(s)}</td>"
+
+
+def _table2(df: pd.DataFrame, line1: dict[str, str], line2: dict[str, str], fmt: dict) -> str:
+    """종목당 두 줄. 한 화면에 가로 스크롤 없이 보이게. 종목 묶음(tbody)을 누르면 코드 복사."""
+    if df.empty:
+        return "<p class='muted'>기록 없음</p>"
+    n = max(len(line1), len(line2))
+    k1 = list(line1) + [""] * (n - len(line1)); k2 = list(line2) + [""] * (n - len(line2))
+    t1 = list(line1.values()) + [""] * (n - len(line1)); t2 = list(line2.values()) + [""] * (n - len(line2))
+    head = ("<thead><tr>" + "".join(f"<th>{html.escape(t)}</th>" for t in t1) + "</tr>"
+            "<tr class='l2'>" + "".join(f"<th>{html.escape(t)}</th>" for t in t2) + "</tr></thead>")
+    bodies = []
+    for _, r in df.iterrows():
+        code = str(r.get("code", ""))
+        attr = f" class='pick' data-code='{html.escape(code)}'" if code.isdigit() else ""
+        bodies.append(f"<tbody{attr}><tr>" + "".join(_cell(r, c, fmt) for c in k1) + "</tr>"
+                      "<tr class='l2'>" + "".join(_cell(r, c, fmt) for c in k2) + "</tr></tbody>")
+    return f"<table class='two'>{head}{''.join(bodies)}</table>"
+
+
 def _fill_chg2(paper: pd.DataFrame, panel_path: Path) -> pd.DataFrame:
     """chg2 (전전일 종가 대비) 가 비어 있는 행을 패널로 채운다. 전일 종가가 0.5% 안에서 맞을 때만."""
     if paper.empty:
@@ -134,16 +175,19 @@ def build() -> Path:
             rows = paper[paper["date"] == day].copy()
             evaluated = "exit" in rows and rows["exit"].notna().any()
             parts.append(f"<h2>{'결과' if evaluated else '후보'} {html.escape(str(day))}</h2>")
-            cols = {"name": "종목", "code": "코드", "price": "매수가", "chg": "전일대비", "chg2": "전전일대비", "net_i": "기관(백만)", "net_f": "외인(백만)"}
-            fmt = {"chg": _pct, "chg2": _pct, "price": lambda v: f"{float(v):,.0f}", "net_i": lambda v: f"{float(v):,.0f}", "net_f": lambda v: f"{float(v):,.0f}"}
+            line1 = {"name": "종목", "price": "매수가", "chg": "전일비", "chg2": "전전일비"}
+            line2 = {"code": "코드", "net_i": "기관", "net_f": "외인", "volume": "거래량"}
+            num = lambda v: "-" if pd.isna(pd.to_numeric(v, errors="coerce")) else f"{float(v):,.0f}"
+            fmt = {"chg": _pct, "chg2": _pct, "price": num, "net_i": num, "net_f": num, "volume": _vol}
             if evaluated:
-                cols.update({"exit": "익일시가", "ret": "수익률"})
-                fmt.update({"exit": lambda v: f"{float(v):,.0f}" if pd.notna(v) else "-", "ret": _pct})
+                line1["ret"] = "시가매도"  # 익일 시가 매도 수익률
+                fmt["ret"] = _pct
                 if "ret_0930" in rows and rows["ret_0930"].notna().any():
-                    cols.update({"ret_0930": "09:30매도"})
-                    fmt.update({"ret_0930": _pct})
+                    line2["ret_0930"] = "09:30매도"
+                    fmt["ret_0930"] = _pct
                 rows = rows.sort_values("ret", ascending=False)
-            parts.append(_table(rows, cols, fmt))
+            parts.append("<p class='muted'>윗줄 매수가 전일비 전전일비 / 아랫줄 기관 외인 순매수 (백만원) 거래량 (매수 시점 누적)</p>")
+            parts.append(_table2(rows, line1, line2, fmt))
 
     # 실주문 기록
     if not live.empty:
@@ -204,7 +248,12 @@ h1{{font-size:20px;margin:0 0 4px}}h2{{font-size:17px;margin:24px 0 8px}}h3{{fon
 table{{border-collapse:collapse;width:100%;font-size:13px;white-space:nowrap;display:block;overflow-x:auto}}
 th,td{{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right}}th:first-child,td:first-child{{text-align:left}}
 thead th{{color:var(--muted);font-weight:500}}
-tr.pick{{cursor:pointer}}tr.pick:active{{background:var(--card)}}
+.pick{{cursor:pointer}}.pick:active{{background:var(--card)}}
+table.two{{white-space:normal;display:table}}table.two td,table.two th{{padding:4px 6px}}
+table.two tr:not(.l2) td{{border-bottom:none;padding-top:8px}}table.two tr.l2 td{{font-size:12px;color:var(--muted);padding-bottom:8px}}
+table.two thead tr:not(.l2) th{{border-bottom:none}}table.two tr.l2 td.up{{color:var(--up)}}table.two tr.l2 td.down{{color:var(--down)}}
+table.two tr:not(.l2) td:first-child{{font-weight:600;white-space:nowrap;max-width:7.5em;overflow:hidden;text-overflow:ellipsis}}
+table.two th{{white-space:nowrap}}
 #toast{{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none}}
 #toast.on{{opacity:.92}}
 </style></head><body>
@@ -224,7 +273,7 @@ async function copy(t) {{
   a.remove(); return ok;
 }}
 document.addEventListener("click", async (ev) => {{
-  const tr = ev.target.closest("tr.pick"); if (!tr) return;
+  const tr = ev.target.closest(".pick"); if (!tr) return;
   const code = tr.dataset.code; const ok = await copy(code);
   toast(ok ? code + " 복사됨" : "복사 실패 " + code);
   if (!/Android|iPhone|iPad/i.test(navigator.userAgent)) return;

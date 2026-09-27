@@ -68,13 +68,46 @@ def select(client: KiwoomClient, top: int, min_chg: float, min_price: float, flo
 
 
 def _append(path: Path, row: dict) -> None:
+    """기존 헤더 순서에 맞춰 한 줄 추가한다. 새 칸이 생기면 파일 전체를 새 헤더로 다시 쓴다 (칸 수가 어긋나 읽기가 깨지지 않게)."""
     RESULTS.mkdir(exist_ok=True)
-    new = not path.exists()
+    if not path.exists() or path.stat().st_size == 0:
+        header = list(row)
+        with open(path, "w", newline="") as f:
+            csv.DictWriter(f, fieldnames=header).writeheader()
+    else:
+        with open(path, newline="") as f:
+            header = next(csv.reader(f), [])
+        extra = [k for k in row if k not in header]
+        if extra:
+            old = pd.read_csv(path, dtype=str, keep_default_na=False)
+            for k in extra:
+                old[k] = ""
+            old.to_csv(path, index=False)
+            header = list(old.columns)
     with open(path, "a", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=list(row))
-        if new:
-            w.writeheader()
-        w.writerow(row)
+        csv.DictWriter(f, fieldnames=header, restval="", extrasaction="ignore").writerow(row)
+
+
+def fetch_volumes(client: KiwoomClient, codes: list[str], max_single: int = 10) -> dict[str, float]:
+    """종목별 당일 누적 거래량 (주). 거래대금 상위 3쪽에서 찾고 없는 종목만 개별 조회한다. 실패해도 매수를 막지 않는다."""
+    out: dict[str, float] = {}
+    try:
+        tv = client.trading_value_top("000")
+        qcol = next((c for c in ("now_trde_qty", "trde_qty") if c in tv.columns), None)
+        if qcol:
+            for cd, q in zip(tv["stk_cd"].astype(str).str.replace("A", "", regex=False).str[:6], tv[qcol]):
+                if cd in codes and cd not in out:
+                    out[cd] = abs(_signed(q))
+    except Exception as e:  # noqa: BLE001
+        log.warning("거래대금 상위 조회 실패: %s", e)
+    for cd in [c for c in codes if c not in out][:max_single]:
+        try:
+            q = client.call("ka10001", "/api/dostk/stkinfo", {"stk_cd": cd}).body.get("trde_qty")
+            if q not in (None, ""):
+                out[cd] = abs(_signed(q))
+        except Exception as e:  # noqa: BLE001
+            log.warning("거래량 조회 실패 %s: %s", cd, e)
+    return out
 
 
 def _record_variants(flows: pd.DataFrame, now: datetime, a) -> dict[str, int]:
@@ -112,6 +145,7 @@ def cmd_buy(client: KiwoomClient, a) -> None:
     log.info("자본 %.0f 원 / 종목당 %.0f 원 / 후보 %d 종목 (%s)", capital, per, len(picks), "실주문" if a.real else "페이퍼")
     print(picks[["name", "price", "chg", "net_i", "net_f"]].to_string())
     chg2 = two_day_change(picks)
+    vol = fetch_volumes(client, list(picks.index))
     to_buy: list[tuple[str, str, float, int, float, float | None]] = []  # (종목명 코드 가격 수량 전일비 전전일비) 카톡용
     for code, r in picks.iterrows():
         qty = int(math.floor(per / r["price"]))
@@ -130,6 +164,7 @@ def cmd_buy(client: KiwoomClient, a) -> None:
             "side": "buy", "qty": qty, "price": r["price"], "chg": round(r["chg"], 4),
             "net_i": r["net_i"], "net_f": r["net_f"], "ord_no": ord_no, "variant": BASE,
             "chg2": round(chg2[code], 4) if code in chg2 else "",
+            "volume": int(vol[code]) if code in vol else "",
         })
     log.info("매수 %d 종목 기록", len(picks))
     counts = _record_variants(flows, now, a)
