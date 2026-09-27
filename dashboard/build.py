@@ -210,14 +210,12 @@ tr.pick{{cursor:pointer}}tr.pick:active{{background:var(--card)}}
 </style></head><body>
 <h1>aut.stock 오버나이트 수급</h1>
 <p class="muted">당일 기관+외인 동시 순매수 상위 30 종가 매수 → 익일 시가 매도</p>
-<p class="muted">종목 줄을 누르면 종목코드가 복사됩니다. 영웅문S# 자동 실행은 <a href="app-test.html">앱 연결 테스트</a>에서 설정</p>
+<p class="muted">종목 줄을 누르면 종목코드가 복사되고 영웅문S#이 열립니다 (안드로이드)</p>
 {body}
 <div id="toast"></div>
 <script>
-// 키움 영웅문S# 안드로이드 패키지. 크롬은 앱이 등록한 스킴으로만 앱을 연다
-// 스킴은 공개돼 있지 않아 app-test.html 에서 폰으로 찾아 저장한 값을 쓴다. 못 열면 이 페이지로 돌아온다
+// 키움 영웅문S# 안드로이드 패키지
 const HERO_PKG = "com.kiwoom.heromts";
-let HERO_SCHEME = ""; try {{ HERO_SCHEME = localStorage.getItem("heroScheme") || ""; }} catch (_) {{}}
 function toast(t) {{ const e = document.getElementById("toast"); e.textContent = t; e.classList.add("on"); setTimeout(() => e.classList.remove("on"), 1800); }}
 async function copy(t) {{
   try {{ await navigator.clipboard.writeText(t); return true; }} catch (_) {{}}
@@ -229,10 +227,9 @@ document.addEventListener("click", async (ev) => {{
   const tr = ev.target.closest("tr.pick"); if (!tr) return;
   const code = tr.dataset.code; const ok = await copy(code);
   toast(ok ? code + " 복사됨" : "복사 실패 " + code);
-  if (HERO_SCHEME && /Android/i.test(navigator.userAgent)) setTimeout(() => {{
-    location.href = "intent://#Intent;scheme=" + HERO_SCHEME + ";package=" + HERO_PKG
-      + ";S.browser_fallback_url=" + encodeURIComponent(location.href.split("#")[0]) + ";end";
-  }}, 300);
+  if (!/Android/i.test(navigator.userAgent)) return;
+  const url = "intent://#Intent;package=" + HERO_PKG + ";end";
+  setTimeout(() => {{ location.href = url; }}, 300);
 }});
 </script>
 </body></html>"""
