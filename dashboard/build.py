@@ -136,6 +136,28 @@ def _fill_chg2(paper: pd.DataFrame, panel_path: Path) -> pd.DataFrame:
     return paper
 
 
+def _fill_volume(paper: pd.DataFrame, panel_path: Path) -> pd.DataFrame:
+    """volume 이 비어 있는 행 (거래량 기록 전 매수분) 을 패널의 그날 확정 거래량으로 채우고 share 도 계산한다."""
+    if paper.empty or not panel_path.exists():
+        return paper
+    paper = paper.copy()
+    for c in ("volume", "share"):
+        paper[c] = pd.to_numeric(paper[c], errors="coerce") if c in paper else float("nan")
+    miss = paper["volume"].isna()
+    if miss.any():
+        try:
+            vol = pd.read_parquet(panel_path, columns=["volume"])["volume"]
+        except Exception:  # noqa: BLE001
+            vol = None
+        if vol is not None:
+            key = pd.MultiIndex.from_arrays([pd.to_datetime(paper.loc[miss, "date"]), paper.loc[miss, "code"]])
+            paper.loc[miss, "volume"] = vol.reindex(key).values
+    net = (pd.to_numeric(paper.get("net_i"), errors="coerce") + pd.to_numeric(paper.get("net_f"), errors="coerce")) * 1e6
+    calc = net / (paper["volume"] * pd.to_numeric(paper["price"], errors="coerce"))
+    paper["share"] = paper["share"].fillna(calc.where(paper["volume"] > 0))
+    return paper
+
+
 def build() -> Path:
     paper = _read("overnight_paper.csv")
     if not paper.empty:
@@ -143,7 +165,7 @@ def build() -> Path:
             paper["variant"] = "base"
         paper["variant"] = paper["variant"].fillna("base")
     panel = ROOT / "data" / "panel.parquet"
-    paper = _fill_chg2(paper, panel)
+    paper = _fill_volume(_fill_chg2(paper, panel), panel)
     allpaper = paper
     paper = paper[paper["variant"] == "base"] if not paper.empty else paper
     live = _read("overnight_log.csv")
@@ -204,7 +226,7 @@ def build() -> Path:
                 rows = rows.sort_values("ret", ascending=False)
             else:  # 후보는 별표 먼저 그다음 거래량 많은 순
                 rows = rows.assign(_v=pd.to_numeric(rows.get("volume"), errors="coerce")).sort_values(["_star", "_v"], ascending=[False, False], na_position="last")
-            legend = "윗줄 매수가 전일비 전전일비 / 아랫줄 기관 외인 순매수 (백만원) 거래량 (매수 시점 누적)"
+            legend = "윗줄 매수가 전일비 전전일비 / 아랫줄 기관 외인 순매수 (백만원) 거래량 (15:21 매수 시점 누적. 거래량 기록 전 날짜는 KRX 확정 거래량)"
             if rows["_star"].any():
                 legend += ("<br><span class='hotkey'>색칠</span> 내일 시가 상승 가능성 높은 종목. 순매수가 거래대금에서 차지하는 비중이 낮은 쪽 40%. "
                            "3년 백테스트 익일 시가 일평균 +0.36% (전체 +0.20%) 비용 18bp 후")
