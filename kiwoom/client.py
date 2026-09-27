@@ -239,11 +239,11 @@ class KiwoomClient:
                 rows.extend(page[key])
         return pd.DataFrame(rows)
 
-    def trading_value_top(self, market: str = "000") -> pd.DataFrame:
+    def trading_value_top(self, market: str = "000", max_pages: int = 3) -> pd.DataFrame:
         """ka10032 거래대금 상위. market '000' 전체 '001' 코스피 '101' 코스닥."""
         body = {"mrkt_tp": market, "mang_stk_incls": "0", "stex_tp": "1"}
         rows: list[dict] = []
-        for page in self.pages("ka10032", "/api/dostk/rkinfo", body, 3):
+        for page in self.pages("ka10032", "/api/dostk/rkinfo", body, max_pages):
             key = next((k for k, v in page.items() if isinstance(v, list)), None)
             if key:
                 rows.extend(page[key])

@@ -88,11 +88,11 @@ def _append(path: Path, row: dict) -> None:
         csv.DictWriter(f, fieldnames=header, restval="", extrasaction="ignore").writerow(row)
 
 
-def fetch_volumes(client: KiwoomClient, codes: list[str], max_single: int = 10) -> dict[str, float]:
+def fetch_volumes(client: KiwoomClient, codes: list[str], max_single: int = 10, pages: int = 3) -> dict[str, float]:
     """종목별 당일 누적 거래량 (주). 거래대금 상위 3쪽에서 찾고 없는 종목만 개별 조회한다. 실패해도 매수를 막지 않는다."""
     out: dict[str, float] = {}
     try:
-        tv = client.trading_value_top("000")
+        tv = client.trading_value_top("000", max_pages=pages)
         qcol = next((c for c in ("now_trde_qty", "trde_qty") if c in tv.columns), None)
         if qcol:
             for cd, q in zip(tv["stk_cd"].astype(str).str.replace("A", "", regex=False).str[:6], tv[qcol]):
@@ -108,6 +108,31 @@ def fetch_volumes(client: KiwoomClient, codes: list[str], max_single: int = 10) 
         except Exception as e:  # noqa: BLE001
             log.warning("거래량 조회 실패 %s: %s", cd, e)
     return out
+
+
+LOWSHARE_TOP = 15
+LOWSHARE_MIN_VALUE = 5e9  # 거래대금 50억 이상만 (종가 동시호가 체결 가능성)
+
+
+def _record_lowshare(client: KiwoomClient, flows: pd.DataFrame, now: datetime, min_price: float) -> int:
+    """페이퍼 변형 lowshare: 동시 순매수 +3~29% 후보 전체에서 순매수 비중 (순매수/거래대금) 이 가장 낮은 15종목.
+    3년 백테스트 비용 18bp 후 일평균 +0.39% 샤프 4.5 (2023~24 +0.26% / 2025~26 +0.49%). 주문은 내지 않는다."""
+    u = flows[(flows.net_i > 0) & (flows.net_f > 0) & (flows.chg >= 0.03) & (flows.chg < 0.29) & (flows.price >= min_price)]
+    if u.empty:
+        return 0
+    vol = fetch_volumes(client, list(u.index), max_single=40, pages=10)
+    u = u.assign(volume=[vol.get(c, float("nan")) for c in u.index])
+    u = u.assign(value=u["volume"] * u["price"])
+    u = u[u["value"] >= LOWSHARE_MIN_VALUE]
+    u = u.assign(share=(u.net_i + u.net_f) * 1e6 / u["value"]).nsmallest(LOWSHARE_TOP, "share")
+    for code, r in u.iterrows():
+        _append(PAPER, {
+            "date": now.strftime("%Y-%m-%d"), "time": now.strftime("%H:%M:%S"), "code": code, "name": r["name"],
+            "side": "buy", "qty": 0, "price": r["price"], "chg": round(r["chg"], 4),
+            "net_i": r["net_i"], "net_f": r["net_f"], "ord_no": "", "variant": "lowshare",
+            "volume": int(r["volume"]), "share": round(r["share"], 4),
+        })
+    return len(u)
 
 
 def _record_variants(flows: pd.DataFrame, now: datetime, a) -> dict[str, int]:
@@ -183,10 +208,14 @@ def cmd_buy(client: KiwoomClient, a) -> None:
             "share": round(share[code], 4) if code in share else "",
         })
     log.info("매수 %d 종목 기록", len(picks))
-    counts = _record_variants(flows, now, a)
-    log.info("변형 기록: %s", counts)
     to_buy.sort(key=lambda t: (not t[6], -vol.get(t[1], 0)))  # 별표 먼저 그다음 거래량 순
-    kakao(buy_message(now, to_buy, a.real))
+    kakao(buy_message(now, to_buy, a.real))  # 사람이 따라 사야 하니 변형 기록 (최대 1분) 보다 먼저
+    counts = _record_variants(flows, now, a)
+    try:
+        counts["lowshare"] = _record_lowshare(client, flows, now, a.min_price)
+    except Exception as e:  # noqa: BLE001
+        log.warning("lowshare 변형 실패: %s", e)
+    log.info("변형 기록: %s", counts)
 
 
 def two_day_change(picks: pd.DataFrame, panel_path: Path = PANEL) -> dict[str, float]:

@@ -300,7 +300,7 @@ def build() -> Path:
             g = ev.groupby(["variant", "date"])["ret"].mean().groupby("variant")
             vt = pd.DataFrame({"days": g.size(), "avg": g.mean(), "win": g.apply(lambda s: (s > 0).mean()),
                                "cum": g.apply(lambda s: (1 + s).prod() - 1)}).reset_index().sort_values("avg", ascending=False)
-            names = {"base": "채택안 (동시순매수 +3% 상위30)", "surge": "급등 10%+", "small": "소형주 가중", "sellside": "동시 순매도 +3%", "top50": "상위 50"}
+            names = {"base": "채택안 (동시순매수 +3% 상위30)", "surge": "급등 10%+", "small": "소형주 가중", "sellside": "동시 순매도 +3%", "top50": "상위 50", "lowshare": "전체후보 비중 하위15 (50억+)"}
             vt["variant"] = vt["variant"].map(lambda v: names.get(v, v))
             parts.append("<h2>변형 비교 (페이퍼)</h2>" + _table(vt, {"variant": "변형", "days": "일수", "avg": "일평균", "win": "일승률", "cum": "누적"},
                                                           {"avg": _pct, "cum": _pct, "win": lambda v: f"{float(v)*100:.0f}%"}))
