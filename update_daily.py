@@ -1,4 +1,4 @@
-"""KRX 일별 패널 (data/panel.parquet) 을 최신 거래일까지 덧붙인다. 매일 16:40 타이머로 실행.
+"""KRX 일별 패널 (data/panel.parquet) 을 최신 거래일까지 덧붙인다. 매일 16:40 타이머로 실행. volume (거래량 주) 도 같이.
 
 날짜 하나에 전 종목을 한 번에 받으므로 하루당 요청 6번 (코스피/코스닥 x 시세 1 + 기관 1 + 외국인 1).
 
@@ -22,7 +22,7 @@ PANEL = DATA_DIR / "panel.parquet"
 
 
 def fetch_day(day: str) -> pd.DataFrame:
-    """day (YYYYMMDD) 의 (ticker) x [open close inst foreign] . 휴장일이면 빈 DataFrame."""
+    """day (YYYYMMDD) 의 (ticker) x [open close inst foreign volume] . 휴장일이면 빈 DataFrame."""
     from pykrx import stock
 
     frames = []
@@ -32,7 +32,8 @@ def fetch_day(day: str) -> pd.DataFrame:
         if px is None or px.empty or "종가" not in px.columns:
             continue
         px = px[px["거래량"] > 0] if "거래량" in px.columns else px
-        base = pd.DataFrame({"open": px["시가"].astype(float), "close": px["종가"].astype(float)})
+        base = pd.DataFrame({"open": px["시가"].astype(float), "close": px["종가"].astype(float),
+                             "volume": px["거래량"].astype(float) if "거래량" in px.columns else float("nan")})
         base.index.name = "ticker"
         for inv, col in (("기관합계", "inst"), ("외국인", "foreign")):
             np_ = stock.get_market_net_purchases_of_equities(day, day, mkt, inv)
@@ -47,7 +48,7 @@ def fetch_day(day: str) -> pd.DataFrame:
     out = pd.concat(frames)
     out = out[~out.index.duplicated(keep="first")]
     out["date"] = pd.Timestamp(day)
-    return out.reset_index().set_index(["date", "ticker"])[["open", "close", "inst", "foreign"]]
+    return out.reset_index().set_index(["date", "ticker"])[["open", "close", "inst", "foreign", "volume"]]
 
 
 def main() -> None:

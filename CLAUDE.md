@@ -4,7 +4,7 @@
 사용자에게 주는 서버 명령은 `&&` 로 이어 최대한 한 줄로 줄이고 코드블록 하나에 한 줄만 넣는다 (폰에서 복사하기 쉽게).
 
 ## 데이터 (data/)
-- `panel.parquet` KRX 일봉+수급 패널. index (date ticker) columns open close inst foreign. 2023-09-20 ~ 최근 (서버가 매일 16:40 갱신 후 `deploy/push_panel.sh` 로 이 브랜치에 자동 커밋. 작업 전 `git pull` 하면 최신). 코스피+코스닥 약 2,760 종목. inst/foreign 은 기관합계/외국인합계 순매수 금액 (원)
+- `panel.parquet` KRX 일봉+수급 패널. index (date ticker) columns open close inst foreign volume. 2023-09-20 ~ 최근 (서버가 매일 16:40 갱신 후 `deploy/push_panel.sh` 로 이 브랜치에 자동 커밋. 작업 전 `git pull` 하면 최신). 코스피+코스닥 약 2,760 종목. inst/foreign 은 기관합계/외국인합계 순매수 금액 (원). volume 은 거래량 (주. `add_volume.py` 로 채움)
   - 읽기: `from fetch_data import load_panel; O, C, I, F = load_panel()` -> 각각 date x ticker 와이드 DataFrame
 - `minute/YYYYMMDD.parquet` 키움 1분봉 (정규장 09:00~15:30). columns code time open high low close volume. 2026-06-25 부터 날짜별 후보 30종목만
   - 읽기: `from intraday.bars import load_days; m = load_days()`
