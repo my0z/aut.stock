@@ -45,7 +45,7 @@ def _table(df: pd.DataFrame, cols: dict[str, str], fmt: dict | None = None, cls:
             klass = ""
             if c in fmt and s.startswith("+"):
                 klass = " class='up'"
-            elif c in fmt and s.startswith("-"):
+            elif c in fmt and s.startswith("-") and s != "-":
                 klass = " class='down'"
             tds.append(f"<td{klass}>{html.escape(s)}</td>")
         code = str(r.get("code", "")) if "code" in cols else ""
@@ -264,6 +264,30 @@ def build() -> Path:
             parts.append(f"<p class='muted'>{legend}</p>")
             parts.append(_table2(rows, line1, line2, fmt))
 
+    # ★ 종목 기록 (날마다 누적. results/overnight_star.csv 로도 저장)
+    if not paper.empty and "share" in paper:
+        st = pd.concat([_mark_star(g) for _, g in paper.groupby("date")])
+        st = st[st["_star"]].copy()
+        if not st.empty:
+            for c in ("price", "exit", "ret", "ret_0930"):
+                st[c] = pd.to_numeric(st[c], errors="coerce") if c in st else float("nan")
+            st = st.sort_values(["date", "ret"], ascending=[False, False])
+            try:
+                st[["date", "code", "name", "price", "exit", "ret", "ret_0930", "share"]].to_csv(RESULTS / "overnight_star.csv", index=False)
+            except OSError:
+                pass
+            ev = st[st["ret"].notna()]
+            head = "<h2>★ 종목 기록</h2>"
+            if not ev.empty:
+                dm = ev.groupby("date")["ret"].mean()
+                head += (f"<p class='muted'>{len(dm)}일 {len(ev)}종목 / 종목 승률 {(ev['ret'] > 0).mean()*100:.0f}% / "
+                         f"일평균 {_pct(dm.mean())} / 누적 {_pct((1 + dm).prod() - 1)}. 매도 전 종목은 수익률 -</p>")
+            recent = st[st["date"].isin(sorted(st["date"].unique(), reverse=True)[:20])].copy()
+            recent["d"] = recent["date"].str[5:]
+            num = lambda v: "-" if pd.isna(v) else f"{float(v):,.0f}"
+            parts.append(head + _table(recent, {"d": "날짜", "name": "종목", "price": "매수가", "exit": "시가", "ret": "수익률"},
+                                       {"price": num, "exit": num, "ret": _pct}, cls="star"))
+
     # 실주문 기록
     if not live.empty:
         parts.append("<h2>실주문 기록 (최근 60건)</h2>")
@@ -326,6 +350,7 @@ thead th{{color:var(--muted);font-weight:500}}
 body>p:first-child{{margin-top:0}}
 .pick{{cursor:pointer}}.pick:active{{background:var(--card)}}
 tbody.hot td{{background:var(--hot)}}tbody.same td{{background:var(--same)}}tbody.same td:first-child{{box-shadow:inset 5px 0 0 var(--sameline)}}table.two td:first-child,table.two th:first-child{{padding-left:9px}}
+table.star{{display:table;width:100%}}table.star td:nth-child(2),table.star th:nth-child(2){{text-align:left}}
 .samekey{{color:var(--fg);padding:0 4px;border-radius:3px}}
 table.two{{table-layout:fixed;width:100%}}table.two td,table.two th{{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}.hotkey{{background:var(--hot);color:var(--fg);padding:0 4px;border-radius:3px}}
 table.two{{white-space:normal;display:table}}table.two td,table.two th{{padding:4px 3px}}
