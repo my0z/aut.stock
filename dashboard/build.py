@@ -212,6 +212,13 @@ def build() -> Path:
                 if not st.empty:
                     ds = st.groupby("date")["ret"].mean(); da = done[done["date"].isin(ds.index)].groupby("date")["ret"].mean()
                     alt += (f"<p class='muted'>★ 종목만 샀다면: 일평균 {_pct(ds.mean())} (전체 {_pct(da.mean())}) {len(ds)}일 비교</p>")
+            tcols = [c for c in ("ret_0905", "ret_0915", "ret_0930", "ret_1000") if c in done and done[c].notna().any()]
+            if tcols:
+                both = done[done[tcols].notna().all(axis=1)]
+                if not both.empty:
+                    avg = lambda c: both.groupby("date")[c].mean().mean()
+                    alt += ("<p class='muted'>매도 시각별 일평균 (같은 종목 " + str(both["date"].nunique()) + "일): 시가 " + _pct(avg("ret")) + " / "
+                            + " / ".join(f"{c[4:6]}:{c[6:]} {_pct(avg(c))}" for c in tcols) + "</p>")
             parts.append("<h2>페이퍼 누적</h2>" + alt)
             parts.append("<div class='cards'>"
                          f"<div class='card'><div class='k'>거래일</div><div class='v'>{len(daily)}</div></div>"

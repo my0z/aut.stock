@@ -1,8 +1,8 @@
 [Unit]
-Description=Overnight eval every weekday 09:36 KST
+Description=Overnight eval every weekday 10:06 KST (09:05 09:15 09:30 10:00 exit prices)
 
 [Timer]
-OnCalendar=Mon..Fri 09:36 Asia/Seoul
+OnCalendar=Mon..Fri 10:06 Asia/Seoul
 Persistent=false
 
 [Install]

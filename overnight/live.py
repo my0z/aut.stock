@@ -363,37 +363,41 @@ def cmd_sell(client: KiwoomClient, a) -> None:
             kakao(msg)
 
 
+EVAL_TIMES = ("0905", "0915", "0930", "1000")  # 시가 대신 이 시각에 팔았다면. 10:06 타이머로 한 번에 기록
+
+
 def cmd_eval(client: KiwoomClient, a) -> None:
-    """09:35 께 실행. 오늘 시가 매도 대신 09:30 에 팔았다면 얼마였는지 페이퍼에 기록한다 (비교용)."""
+    """10:06 께 실행. 오늘 시가 매도 대신 09:05 09:15 09:30 10:00 에 팔았다면 얼마였는지 페이퍼에 기록한다 (비교용)."""
     if not PAPER.exists():
         return
     df = pd.read_csv(PAPER, dtype={"code": str})
     if "exit" not in df:
         return
-    if "exit_0930" not in df:
-        df["exit_0930"] = float("nan")
-        df["ret_0930"] = float("nan")
+    for t in EVAL_TIMES:
+        if f"exit_{t}" not in df:
+            df[f"exit_{t}"] = float("nan")
+            df[f"ret_{t}"] = float("nan")
     today = datetime.now(KST).strftime("%Y%m%d")
+    # 오늘 아침 시가로 평가된 행만 (exit 는 있고 09:30 기록이 아직 없는 행 = 오늘 매도분)
     m = (df["side"] == "buy") & df["exit"].notna() & df["exit_0930"].isna()
-    # 오늘 아침 시가로 평가된 행만 (exit 가 채워진 날짜 = 오늘)
-    prices = {}
+    prices: dict[str, dict[str, float]] = {}
     for code in df.loc[m, "code"].unique():
         try:
             bars = client.minute_chart(code, tic=1, base_dt=today, max_pages=1)
             bars = bars[bars.index.strftime("%Y%m%d") == today]
-            b = bars[bars.index.strftime("%H%M") == "0930"]
-            if not b.empty:
-                prices[code] = float(b["open"].iloc[0])
+            hm = bars.index.strftime("%H%M")
+            prices[code] = {t: float(bars["open"][hm == t].iloc[0]) for t in EVAL_TIMES if (hm == t).any()}
         except Exception as e:  # noqa: BLE001
-            log.warning("%s 09:30 조회 실패: %s", code, e)
-    m &= df["code"].isin(prices)
-    df.loc[m, "exit_0930"] = df.loc[m, "code"].map(prices)
-    df.loc[m, "ret_0930"] = df.loc[m, "exit_0930"] / df.loc[m, "price"] - 1 - a.cost_bps / 1e4
+            log.warning("%s 분봉 조회 실패: %s", code, e)
+    for t in EVAL_TIMES:
+        mt = m & df["code"].map(lambda c: t in prices.get(c, {}))
+        df.loc[mt, f"exit_{t}"] = df.loc[mt, "code"].map(lambda c: prices[c][t])
+        df.loc[mt, f"ret_{t}"] = df.loc[mt, f"exit_{t}"] / df.loc[mt, "price"] - 1 - a.cost_bps / 1e4
     df.to_csv(PAPER, index=False)
-    done = df[m]
+    done = df[m & df["ret_0930"].notna()]
     if not done.empty:
-        log.info("09:30 매도 가정 %d 종목: 평균 %+.3f%% (시가 매도 %+.3f%%)", len(done),
-                 done["ret_0930"].mean() * 100, done["ret"].mean() * 100)
+        log.info("매도 시각별 평균 (%d 종목): 시가 %+.3f%% %s", len(done), done["ret"].mean() * 100,
+                 " ".join(f"{t} {done[f'ret_{t}'].mean()*100:+.3f}%" for t in EVAL_TIMES))
 
 
 def cmd_status(client: KiwoomClient, a) -> None:
