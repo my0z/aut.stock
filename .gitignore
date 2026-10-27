@@ -9,3 +9,4 @@ logs/
 .kakao_token.json
 dashboard/index.html
 !data/daytrade/
+.kiwoom_token*

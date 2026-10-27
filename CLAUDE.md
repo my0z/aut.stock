@@ -16,7 +16,7 @@
 - 시가 대신 09:30 매도가 +0.19% 유리할 가능성 (분봉 60일. 페이퍼로 검증 중)
 
 ## 코드
-- `kiwoom/` 키움 REST/웹소켓 클라이언트 (초당 1건 제한 자동 대기). 환경변수 KIWOOM_MODE KIWOOM_APPKEY KIWOOM_SECRET
+- `kiwoom/` 키움 REST/웹소켓 클라이언트 (초당 1건 제한 자동 대기. 토큰은 `.kiwoom_token_{mode}.json` 에 캐시해 타이머 프로세스끼리 공유하고 발급 한도 1700 이면 최대 60초 재시도). 환경변수 KIWOOM_MODE KIWOOM_APPKEY KIWOOM_SECRET
 - `overnight/` 채택 전략. `live.py buy|sell|eval|select|status`. 변형 4개를 페이퍼로 병행 기록 (`variants.py`)
 - `backtest.py` 기관 연속 순매수 일봉 백테스트 (원래 질문. 결과: 단독으론 수익 없음)
 - `fetch_data.py` KRX 전 종목 수집 (프로세스 하나만. --sleep 1. 차단되면 blockError). `update_daily.py` 하루치 증분
@@ -32,4 +32,4 @@
 - 결론: 유일한 플러스 신호는 소형주 갭 하락 반등인데 유동성 5억 이상에선 사라지고 슬리피지 50bp 면 소멸. 유동 종목 장중 롱은 전부 마이너스. 러너 `daytrade/live.py select|buy|sell|eval` (08:58:30 / 15:20 / 15:45 타이머 `deploy/aut-day-*`). 페이퍼 기록 `results/daytrade_paper.csv`. 자세한 건 `daytrade/README.md`
 
 ## 테스트
-`python test_backtest.py && python -m intraday.test_intraday && python -m daytrade.test_daytrade`
+`python test_backtest.py && python -m intraday.test_intraday && python -m daytrade.test_daytrade && python -m kiwoom.test_token`

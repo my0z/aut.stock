@@ -7,11 +7,15 @@
 """
 from __future__ import annotations
 
+import fcntl
+import hashlib
+import json
 import logging
 import os
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Iterator
 
 import pandas as pd
@@ -23,7 +27,8 @@ KST = timezone(timedelta(hours=9))
 BASE_URLS = {"real": "https://api.kiwoom.com", "demo": "https://mockapi.kiwoom.com"}
 WS_URLS = {"real": "wss://api.kiwoom.com:10000", "demo": "wss://mockapi.kiwoom.com:10000"}
 AUTH_RETRY_CODES = {8005, 8031, 8103}
-RATE_LIMIT_CODE = 1700  # 허용된 API 요청 개수 초과 (초당 1건)
+RATE_LIMIT_CODE = 1700  # 허용된 API 요청 개수 초과 (초당 1건. 토큰 발급 au10001 은 별도 한도)
+TOKEN_RETRY_WAITS = (2, 4, 8, 16, 30)  # 토큰 발급 한도에 걸렸을 때 재시도 간격 (초)
 
 
 class KiwoomError(RuntimeError):
@@ -77,6 +82,8 @@ def _signed(v: Any) -> float:
 
 
 class KiwoomClient:
+    TOKEN_DIR = Path(__file__).resolve().parent.parent  # 토큰 캐시 위치. 테스트에서 바꾼다
+
     def __init__(self, mode: str | None = None, appkey: str | None = None, secret: str | None = None,
                  timeout: int = 30, min_interval: float = 1.0):
         self.mode = (mode or os.environ.get("KIWOOM_MODE") or "demo").lower()
@@ -96,24 +103,79 @@ class KiwoomClient:
         self.sess = requests.Session()
 
     # ---------- 인증 ----------
+    def _fingerprint(self) -> str:
+        return hashlib.sha256(f"{self.appkey}:{self.secret}".encode()).hexdigest()[:16]
+
+    def _cache_file(self) -> Path:
+        return self.TOKEN_DIR / f".kiwoom_token_{self.mode}.json"
+
+    def _read_cache(self) -> tuple[str, datetime] | None:
+        """디스크에 저장된 토큰. 키가 바뀌었거나 만료 10분 전이면 None."""
+        try:
+            d = json.loads(self._cache_file().read_text())
+            exp = datetime.strptime(d["expires"], "%Y%m%d%H%M%S").replace(tzinfo=KST)
+            if d.get("fp") == self._fingerprint() and datetime.now(KST) < exp - timedelta(minutes=10):
+                return d["token"], exp
+        except (OSError, ValueError, KeyError):
+            pass
+        return None
+
+    def _write_cache(self, token: str, exp: datetime) -> None:
+        path = self._cache_file()
+        tmp = path.with_suffix(".tmp")
+        try:
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w") as f:
+                json.dump({"fp": self._fingerprint(), "token": token, "expires": exp.strftime("%Y%m%d%H%M%S")}, f)
+            os.replace(tmp, path)
+        except OSError as e:
+            log.warning("토큰 캐시 저장 실패: %s", e)
+
+    def _drop_cache(self) -> None:
+        self._token = None
+        try:
+            self._cache_file().unlink()
+        except OSError:
+            pass
+
     def token(self) -> str:
+        """메모리 -> 디스크 캐시 -> 새로 발급 순서. 타이머마다 프로세스가 새로 떠도 토큰을 공유한다."""
         now = datetime.now(KST)
         if self._token and self._token_exp and now < self._token_exp - timedelta(minutes=10):
             return self._token
-        r = self.sess.post(
-            f"{self.base}/oauth2/token",
-            json={"grant_type": "client_credentials", "appkey": self.appkey, "secretkey": self.secret},
-            headers={"Content-Type": "application/json;charset=UTF-8"},
-            timeout=self.timeout,
-        )
-        data = r.json() if r.content else {}
-        code = _code(data.get("return_code"))
-        if r.status_code >= 400 or code not in (None, 0):
-            raise KiwoomError(code, str(data.get("return_msg", f"HTTP {r.status_code}")))
-        self._token = data["token"]
-        self._token_exp = datetime.strptime(data["expires_dt"], "%Y%m%d%H%M%S").replace(tzinfo=KST)
-        log.info("키움 토큰 발급 (%s) 만료 %s", self.mode, self._token_exp)
-        return self._token
+        with open(self.TOKEN_DIR / f".kiwoom_token_{self.mode}.lock", "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)  # 동시에 뜬 프로세스가 같이 발급하지 않게 한다
+            cached = self._read_cache()
+            if cached:
+                self._token, self._token_exp = cached
+                return self._token
+            return self._issue_token()
+
+    def _issue_token(self) -> str:
+        """oauth2/token 호출. 발급 한도 (1700) 에 걸리면 기다렸다 다시 시도한다."""
+        for i in range(len(TOKEN_RETRY_WAITS) + 1):
+            r = self.sess.post(
+                f"{self.base}/oauth2/token",
+                json={"grant_type": "client_credentials", "appkey": self.appkey, "secretkey": self.secret},
+                headers={"Content-Type": "application/json;charset=UTF-8"},
+                timeout=self.timeout,
+            )
+            data = r.json() if r.content else {}
+            code = _code(data.get("return_code"))
+            if code == RATE_LIMIT_CODE or _embedded_code(data.get("return_msg")) == RATE_LIMIT_CODE:
+                if i < len(TOKEN_RETRY_WAITS):
+                    log.warning("토큰 발급 한도 초과. %d초 후 재시도 (%d/%d)", TOKEN_RETRY_WAITS[i], i + 1, len(TOKEN_RETRY_WAITS))
+                    time.sleep(TOKEN_RETRY_WAITS[i])
+                    continue
+                raise KiwoomError(RATE_LIMIT_CODE, str(data.get("return_msg", "토큰 발급 한도 초과")))
+            if r.status_code >= 400 or code not in (None, 0):
+                raise KiwoomError(code, str(data.get("return_msg", f"HTTP {r.status_code}")))
+            self._token = data["token"]
+            self._token_exp = datetime.strptime(data["expires_dt"], "%Y%m%d%H%M%S").replace(tzinfo=KST)
+            self._write_cache(self._token, self._token_exp)
+            log.info("키움 토큰 발급 (%s) 만료 %s", self.mode, self._token_exp)
+            return self._token
+        raise KiwoomError(RATE_LIMIT_CODE, "토큰 발급 한도 초과")
 
     def _throttle(self) -> None:
         wait = self.min_interval - (time.monotonic() - self._last_call)
@@ -143,7 +205,7 @@ class KiwoomClient:
         code = _code(data.get("return_code"))
         embedded = _embedded_code(data.get("return_msg"))
         if _retry and (r.status_code == 401 or code in AUTH_RETRY_CODES or embedded in AUTH_RETRY_CODES):
-            self._token = None
+            self._drop_cache()  # 메모리와 디스크 토큰을 같이 버려 새로 발급받는다
             return self.call(api_id, path, body, cont_yn, next_key, _retry=False)
         if embedded == RATE_LIMIT_CODE or code == RATE_LIMIT_CODE:
             if _rate_tries <= 0:
