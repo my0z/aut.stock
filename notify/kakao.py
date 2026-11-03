@@ -4,6 +4,7 @@
 - KAKAO_REST_KEY        카카오 개발자 앱의 REST API 키
 - KAKAO_CLIENT_SECRET   플랫폼 키 > 클라이언트 시크릿 (카카오 로그인) 이 활성화돼 있으면 필요
 - KAKAO_TOKEN_FILE 토큰 저장 파일 (기본 ~/.kakao_token.json)
+- KAKAO_MUTE         1 이면 모든 카톡 알림을 보내지 않는다 (실패 알림 포함. 첫 줄만 로그에 남는다). 다시 켜려면 지운다
 
 최초 1회 인증:
     python -m notify.kakao auth        # 안내대로 브라우저에서 로그인 후 code 붙여넣기
@@ -98,8 +99,15 @@ def unlink() -> None:
         TOKEN_FILE.unlink()
 
 
+def muted() -> bool:
+    return os.environ.get("KAKAO_MUTE", "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def send(text: str, url: str | None = None) -> bool:
-    """긴 글은 200자 단위로 나눠 보낸다. 실패해도 예외 대신 False."""
+    """긴 글은 200자 단위로 나눠 보낸다. 실패해도 예외 대신 False. KAKAO_MUTE=1 이면 보내지 않는다."""
+    if muted():
+        log.info("카톡 알림 꺼짐 (KAKAO_MUTE): %s", text.split("\n")[0][:60])
+        return False
     try:
         token = access_token()
         chunks = _chunk(text)
