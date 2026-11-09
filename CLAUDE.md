@@ -20,7 +20,7 @@
 - `overnight/` 채택 전략. `live.py buy|sell|eval|select|status`. 변형 4개를 페이퍼로 병행 기록 (`variants.py`)
 - `backtest.py` 기관 연속 순매수 일봉 백테스트 (원래 질문. 결과: 단독으론 수익 없음)
 - `fetch_data.py` KRX 전 종목 수집 (프로세스 하나만. --sleep 1. 차단되면 blockError). `update_daily.py` 하루치 증분
-- `dashboard/build.py` -> https://ab.usb.kr 정적 페이지. `notify/kakao.py` 카톡 알림 (서버 .env 에 `KAKAO_MUTE=1` 이면 전부 끈다)
+- `dashboard/build.py` -> https://ab.usb.kr 정적 페이지. `notify/kakao.py` 카톡 알림 (기본 꺼짐. 서버 .env 에 `KAKAO_MUTE=0` 이면 켠다. 수동 `python -m notify.kakao send` 는 항상 전송)
 - `deploy/` 오라클 VM systemd 타이머 (08:35 매도 / 09:36 eval / 15:21 매수 / 16:40 패널 갱신)
 
 ## 운용 상태
@@ -32,4 +32,4 @@
 - 결론: 유일한 플러스 신호는 소형주 갭 하락 반등인데 유동성 5억 이상에선 사라지고 슬리피지 50bp 면 소멸. 유동 종목 장중 롱은 전부 마이너스. 러너 `daytrade/live.py select|buy|sell|eval` (08:58:30 / 15:20 / 15:45 타이머 `deploy/aut-day-*`). 페이퍼 기록 `results/daytrade_paper.csv`. 자세한 건 `daytrade/README.md`
 
 ## 테스트
-`python test_backtest.py && python -m intraday.test_intraday && python -m daytrade.test_daytrade && python -m kiwoom.test_token`
+`python test_backtest.py && python -m intraday.test_intraday && python -m daytrade.test_daytrade && python -m kiwoom.test_token && python -m notify.test_kakao`
