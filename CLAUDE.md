@@ -29,6 +29,7 @@
 
 ## 운용 상태
 - 서버: 오라클 VM (ubuntu@relay, ~/aut.stock, venv ~/.venv). 키는 서버 .env 에만 둔다. 채팅에 키를 올리지 않는다
+- 키움 모의투자 키 (KIWOOM_MODE=demo). 모의투자 기간이나 App Key 가 만료되면 8001 인증 실패로 매수 매도가 멈춘다 (2026-10-16 ~ 11-20 공백). 연장은 키움 사이트에서 사람만 가능. .env 의 KIWOOM_KEY_EXPIRES (YYYY-MM-DD) 로 대시보드가 7일 전부터 경고. 인증 실패 카톡은 KAKAO_MUTE 와 상관없이 하루 한 번 보낸다
 - 모의투자 페이퍼 모드. `results/overnight_paper.csv` 에 매일 기록. 실주문은 .env OVERNIGHT_ARGS 에 --real
 
 ## 미국주식 (overseas/) — 검증 완료, 기각

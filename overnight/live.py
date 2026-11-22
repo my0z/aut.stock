@@ -21,7 +21,7 @@ from pathlib import Path
 import pandas as pd
 
 from kiwoom import KiwoomClient
-from kiwoom.client import KST, _signed
+from kiwoom.client import KST, KiwoomError, _signed
 from notify.kakao import send as kakao
 
 from .variants import BASE, VARIANTS
@@ -435,8 +435,28 @@ def main() -> None:
             cmd_status(client, a)
     except Exception as e:  # noqa: BLE001
         log.exception("실행 실패")
-        kakao(f"[aut.stock] {a.mode} 실패: {type(e).__name__}: {str(e)[:150]}")
+        if is_auth_error(e):
+            alert_auth_failure(e)
+        else:
+            kakao(f"[aut.stock] {a.mode} 실패: {type(e).__name__}: {str(e)[:150]}")
         raise
+
+
+def is_auth_error(e: Exception) -> bool:
+    """키움 App Key 검증 실패 (8001 등). 모의투자 기간 만료나 키 만료일 때 난다."""
+    return isinstance(e, KiwoomError) and ("8001" in e.msg or "인증" in e.msg)
+
+
+def alert_auth_failure(e: Exception) -> None:
+    """카톡을 꺼 둬도 (KAKAO_MUTE) 인증 실패만은 보낸다. 하루 한 번만."""
+    mark = RESULTS / f".auth_alert_{datetime.now(KST):%Y%m%d}"
+    if mark.exists():
+        return
+    ok = kakao(f"[aut.stock] 키움 인증 실패. 매수 매도가 멈췄습니다\n{str(e)[:120]}\n"
+               "키움 사이트에서 모의투자 기간과 App Key 를 확인하고 서버 .env 를 바꾸세요", force=True)
+    if ok:
+        RESULTS.mkdir(exist_ok=True)
+        mark.touch()
 
 
 if __name__ == "__main__":

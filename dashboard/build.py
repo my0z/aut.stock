@@ -5,6 +5,7 @@ python -m dashboard.build
 from __future__ import annotations
 
 import html
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -179,6 +180,20 @@ def _fill_volume(paper: pd.DataFrame, panel_path: Path) -> pd.DataFrame:
     return paper
 
 
+def _key_expires():
+    """서버 .env 의 KIWOOM_KEY_EXPIRES (YYYY-MM-DD). 손으로 대시보드를 만들 때는 .env 를 안 읽으니 파일에서도 찾는다."""
+    v = os.environ.get("KIWOOM_KEY_EXPIRES", "")
+    env = ROOT / ".env"
+    if not v and env.exists():
+        for line in env.read_text(errors="ignore").splitlines():
+            if line.strip().startswith("KIWOOM_KEY_EXPIRES="):
+                v = line.split("=", 1)[1].strip().strip("'\"")
+    try:
+        return datetime.strptime(v, "%Y-%m-%d").date() if v else None
+    except ValueError:
+        return None
+
+
 def build() -> Path:
     paper = _read("overnight_paper.csv")
     if not paper.empty:
@@ -192,6 +207,12 @@ def build() -> Path:
     live = _read("overnight_log.csv")
     now = datetime.now(KST)
     parts = [f"<p class='muted'>갱신 {now:%Y-%m-%d %H:%M} KST</p>"]
+    exp = _key_expires()
+    if exp is not None:
+        left = (exp - now.date()).days
+        if left <= 7:
+            parts.append(f"<p class='down'><b>키움 키 {'만료됨' if left < 0 else f'만료 {left}일 전'} ({exp})</b>. "
+                         "키움 사이트에서 모의투자 기간과 App Key 를 연장하고 서버 .env 의 KIWOOM_KEY_EXPIRES 도 새 날짜로 바꾸세요</p>")
     # 매수가 조용히 멈추면 (키움 인증 실패 등. 카톡은 꺼져 있다) 시세 데이터보다 매수 기록이 뒤처진다
     if not allpaper.empty and panel.exists():
         try:
