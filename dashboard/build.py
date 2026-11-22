@@ -192,6 +192,16 @@ def build() -> Path:
     live = _read("overnight_log.csv")
     now = datetime.now(KST)
     parts = [f"<p class='muted'>갱신 {now:%Y-%m-%d %H:%M} KST</p>"]
+    # 매수가 조용히 멈추면 (키움 인증 실패 등. 카톡은 꺼져 있다) 시세 데이터보다 매수 기록이 뒤처진다
+    if not allpaper.empty and panel.exists():
+        try:
+            last_px = pd.read_parquet(panel, columns=["close"]).index.get_level_values("date").max().strftime("%Y-%m-%d")
+            last_buy = str(allpaper["date"].max())
+            if last_buy < last_px:
+                parts.append(f"<p class='down'><b>매수 기록이 {html.escape(last_buy)} 에서 멈춤</b> (시세 데이터는 {last_px} 까지). "
+                             "15:21 매수가 실패 중. 서버에서 journalctl -u aut-buy.service -n 25 확인</p>")
+        except Exception:  # noqa: BLE001
+            pass
 
     # 누적 성적
     if not paper.empty and "ret" in paper:
