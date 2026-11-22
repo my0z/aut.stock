@@ -121,6 +121,32 @@ python -m daytrade.minute_analysis             # 평균 경로 / 매도 시각�
 - `minute_analysis` 는 시가 매수 후 T 에 팔았을 때와 T1 에 사서 T2 에 팔았을 때의 격자를 낸다. 여기서 15:20 보다 나은 매도 시각이 나오면 `live.py sell` 타이머 시각을 옮긴다
 - 첫 1분 봉의 고가/종가 대비 시가가 시가 매수 슬리피지의 대용치다
 
+## 웹 페이지 (dd.usb.kr)
+
+폰으로 보기 편하게 한 장짜리 페이지를 만든다. 오버나이트 대시보드 (ab.usb.kr) 와 폴더도 주소도 따로다.
+
+- 최근 매수 종목 표 (줄을 누르면 종목코드 복사 후 영웅문S# 실행. 안드로이드)
+- 요약 카드 (일평균 승률 누적 수익 최악의 날) 와 누적 수익 곡선 일별 결과
+- 시간대별 평균 경로 (분봉. 평균 고점 시각과 마감 값이 매도 시각 근거)
+- 갭 크기별과 유동성별 성과 (슬리피지 판단용)
+- 페이퍼와 실주문 기록을 합쳐서 보여주고 실주문 줄에는 실 배지가 붙는다
+
+```bash
+python -m daytrade.web          # 한 번 생성 -> daytrade/web/index.html
+```
+
+러너가 buy sell eval 뒤에 자동으로 다시 만든다. 처음 한 번만 서버에서 아래를 한다.
+
+1. DNS 에 A 레코드 `dd` 를 추가한다 (값은 ab.usb.kr 과 같은 VM 공인 IP)
+2. 서버에서
+```bash
+cd ~/aut.stock && git pull --no-rebase && python -m daytrade.web
+sudo cp deploy/nginx-dd.conf /etc/nginx/sites-available/dd
+sudo ln -sf /etc/nginx/sites-available/dd /etc/nginx/sites-enabled/dd
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d dd.usb.kr
+```
+
 ## 구성
 
 ```
@@ -131,6 +157,7 @@ daytrade/watchlist.py  다음날 아침 감시 목록 (밴드 통과 종목 + �
 daytrade/live.py       08:59 선정 / 매수 / 15:20 매도 / 평가 (키움 + 카톡)
 daytrade/collect.py    후보 종목 1분봉 수집 (history / today) -> data/daytrade/minute/
 daytrade/minute_analysis.py  분봉 경로 분석 (반등 시각. 매수/매도 시각 격자)
-daytrade/test_daytrade.py
+daytrade/web.py        웹 대시보드 생성 (dd.usb.kr)
+daytrade/test_daytrade.py  daytrade/test_web.py
 deploy/aut-day-*       systemd 타이머. deploy/run_daytrade.sh
 ```

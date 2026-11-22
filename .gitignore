@@ -10,3 +10,4 @@ logs/
 dashboard/index.html
 !data/daytrade/
 .kiwoom_token*
+daytrade/web/index.html
